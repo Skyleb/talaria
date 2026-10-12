@@ -16,6 +16,7 @@
   --accent-text: #ffffff;
   --danger: #d6455d;
   --success: #2d9d68;
+  --warning: #9a6a10;
   --border: #d9dce2;
 }
 
@@ -32,6 +33,7 @@
   --accent-text: #ffffff;
   --danger: #ef5d75;
   --success: #3fbf7f;
+  --warning: #e0b050;
   --border: #262b38;
 }
 
@@ -48,6 +50,7 @@
   --color-accent-text: var(--accent-text);
   --color-danger: var(--danger);
   --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-edge: var(--border);
 }
 

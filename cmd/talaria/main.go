@@ -124,9 +124,11 @@ func main() {
 	startSessionGC(st, log)
 
 	// Built-in dynamic-DNS updater: keeps the hostname pointed at this
-	// connection without a separate updater client.
-	ddnsCtx, ddnsCancel := context.WithCancel(context.Background())
-	defer ddnsCancel()
+	// connection without a separate updater client. The runner lets the
+	// admin settings UI reconfigure DDNS at runtime without a restart.
+	ddnsRunner := ddns.NewRunner(log)
+	defer ddnsRunner.Stop()
+	srv.DDNS = ddnsRunner
 	if cfg.DDNS.Enabled {
 		domain := cfg.DDNS.Domain
 		if domain == "" {
@@ -135,14 +137,13 @@ func main() {
 		if domain == "" || (cfg.DDNS.Provider == "duckdns" && cfg.DDNS.Token == "") {
 			log.Error("ddns enabled but missing domain or token; updater not started")
 		} else {
-			go ddns.Run(ddnsCtx, ddns.Config{
+			ddnsRunner.Set(ddns.Config{
 				Provider: cfg.DDNS.Provider,
 				Domain:   domain,
 				Token:    cfg.DDNS.Token,
 				URL:      cfg.DDNS.URL,
 				Interval: time.Duration(cfg.DDNS.IntervalMinutes) * time.Minute,
-			}, log)
-			log.Info("ddns updater running", "provider", cfg.DDNS.Provider, "domain", domain)
+			})
 		}
 	}
 

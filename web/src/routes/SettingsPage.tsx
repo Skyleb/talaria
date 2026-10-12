@@ -4,9 +4,9 @@ import { api, uploadFile } from '../lib/api'
 import { useApp, type Theme } from '../store'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
-import { Button, cx, ErrorText, Input, Label } from '../components/ui'
+import { Button, cx, ErrorText, Input, Label, Select } from '../components/ui'
 import { PageHeader } from './AppShell'
-import type { Invite, SessionInfo, User } from '../lib/types'
+import type { Invite, ServerConfig, SessionInfo, User } from '../lib/types'
 import { formatDateTime, formatBytes } from '../lib/time'
 
 export default function SettingsPage({ onMenu }: { onMenu: () => void }) {
@@ -306,7 +306,234 @@ function AdminSection() {
           <p className="mt-3 text-xs text-ink-2">Talaria {stats.version}</p>
         </Card>
       )}
+      <ServerConfigSection />
     </>
+  )
+}
+
+function SubHead({ children }: { children: React.ReactNode }) {
+  return <h3 className="border-b border-edge pb-1 text-sm font-semibold text-ink">{children}</h3>
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  label: string
+  hint?: string
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2">
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="text-sm text-ink">
+        {label}
+        {hint && <span className="block text-xs text-ink-2">{hint}</span>}
+      </span>
+    </label>
+  )
+}
+
+// ServerConfigSection lets the admin manage talaria.toml from the browser —
+// no hand-editing required.
+function ServerConfigSection() {
+  const [cfg, setCfg] = useState<ServerConfig | null>(null)
+  const [configPath, setConfigPath] = useState('')
+  const [restartItems, setRestartItems] = useState<string[]>([])
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    api
+      .get<{ config: ServerConfig; config_path: string }>('/api/v1/admin/config')
+      .then((r) => {
+        setCfg(r.config)
+        setConfigPath(r.config_path)
+      })
+      .catch((e: any) => setErr(e?.message ?? 'Could not load server configuration'))
+  }, [])
+
+  if (!cfg) return err ? <Card title="Admin — server configuration"><ErrorText>{err}</ErrorText></Card> : null
+
+  // Immutable nested update helper: patch one section of the config.
+  const patch = <K extends keyof ServerConfig>(section: K, values: Partial<ServerConfig[K]>) =>
+    setCfg({ ...cfg, [section]: { ...cfg[section], ...values } })
+
+  const num = (v: string) => (v === '' ? 0 : Number(v))
+
+  async function save() {
+    if (!cfg) return
+    setBusy(true)
+    setErr('')
+    setMsg('')
+    setRestartItems([])
+    try {
+      const r = await api.put<{ config: ServerConfig; restart_required: string[] }>(
+        '/api/v1/admin/config',
+        cfg,
+      )
+      setCfg(r.config)
+      setRestartItems(r.restart_required ?? [])
+      setMsg('Saved.')
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not save')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card title="Admin — server configuration">
+      <div className="space-y-5">
+        <div className="space-y-3">
+          <SubHead>General</SubHead>
+          <div>
+            <Label>Server name</Label>
+            <Input value={cfg.server.name} onChange={(e) => patch('server', { name: e.target.value })} maxLength={64} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>HTTP port</Label>
+              <Input type="number" value={cfg.server.http_port || ''} onChange={(e) => patch('server', { http_port: num(e.target.value) })} />
+            </div>
+            <div>
+              <Label>Max upload (MB)</Label>
+              <Input type="number" value={cfg.server.max_upload_mb || ''} onChange={(e) => patch('server', { max_upload_mb: num(e.target.value) })} />
+            </div>
+          </div>
+          <Toggle
+            checked={cfg.server.open_browser}
+            onChange={(v) => patch('server', { open_browser: v })}
+            label="Open browser on first run"
+          />
+        </div>
+
+        <div className="space-y-3">
+          <SubHead>Remote access — HTTPS</SubHead>
+          <div>
+            <Label>Mode</Label>
+            <Select value={cfg.tls.mode} onChange={(e) => patch('tls', { mode: e.target.value as ServerConfig['tls']['mode'] })}>
+              <option value="auto">Auto — HTTPS when a domain is set, else HTTP only</option>
+              <option value="acme">Let's Encrypt (requires domain + ports 80/443)</option>
+              <option value="selfsigned">Self-signed (LAN HTTPS, browser warning)</option>
+              <option value="off">Off — plain HTTP only</option>
+            </Select>
+          </div>
+          <div>
+            <Label>Domain</Label>
+            <Input
+              value={cfg.tls.domain}
+              onChange={(e) => patch('tls', { domain: e.target.value })}
+              placeholder="yourname.duckdns.org"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>HTTPS port</Label>
+              <Input type="number" value={cfg.tls.https_port || ''} onChange={(e) => patch('tls', { https_port: num(e.target.value) })} />
+            </div>
+            <div>
+              <Label>ACME email (optional)</Label>
+              <Input type="email" value={cfg.tls.acme_email} onChange={(e) => patch('tls', { acme_email: e.target.value })} placeholder="you@example.com" />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <SubHead>Dynamic DNS</SubHead>
+          <Toggle
+            checked={cfg.ddns.enabled}
+            onChange={(v) => patch('ddns', { enabled: v })}
+            label="Keep my domain pointed at this connection"
+            hint="Talaria updates the DNS record itself — no separate updater needed. Applies immediately on save."
+          />
+          {cfg.ddns.enabled && (
+            <>
+              <div>
+                <Label>Provider</Label>
+                <Select value={cfg.ddns.provider} onChange={(e) => patch('ddns', { provider: e.target.value as ServerConfig['ddns']['provider'] })}>
+                  <option value="duckdns">DuckDNS (free — duckdns.org)</option>
+                  <option value="custom">Custom update URL</option>
+                </Select>
+              </div>
+              {cfg.ddns.provider === 'duckdns' ? (
+                <div>
+                  <Label>DuckDNS token</Label>
+                  <Input
+                    value={cfg.ddns.token}
+                    onChange={(e) => patch('ddns', { token: e.target.value })}
+                    placeholder="shown at the top of duckdns.org"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label>Update URL</Label>
+                  <Input
+                    value={cfg.ddns.url}
+                    onChange={(e) => patch('ddns', { url: e.target.value })}
+                    placeholder="https://provider/update?host={DOMAIN}&pass={TOKEN}"
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>DDNS domain (optional)</Label>
+                  <Input
+                    value={cfg.ddns.domain}
+                    onChange={(e) => patch('ddns', { domain: e.target.value })}
+                    placeholder={cfg.tls.domain || 'defaults to HTTPS domain'}
+                  />
+                </div>
+                <div>
+                  <Label>Update every (min)</Label>
+                  <Input type="number" value={cfg.ddns.interval_minutes || ''} onChange={(e) => patch('ddns', { interval_minutes: num(e.target.value) })} />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <SubHead>Calls (WebRTC)</SubHead>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Media UDP port</Label>
+              <Input type="number" value={cfg.webrtc.udp_port || ''} onChange={(e) => patch('webrtc', { udp_port: num(e.target.value) })} />
+            </div>
+            <div>
+              <Label>Public IP override</Label>
+              <Input value={cfg.webrtc.public_ip} onChange={(e) => patch('webrtc', { public_ip: e.target.value })} placeholder="auto-detected" />
+            </div>
+          </div>
+          <p className="text-xs text-ink-2">
+            Forward this UDP port on your router so remote friends can join calls.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <Button onClick={save} disabled={busy}>Save configuration</Button>
+            {msg && <span className="text-sm text-success">{msg}</span>}
+          </div>
+          {restartItems.length > 0 && (
+            <p className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
+              Restart Talaria to apply: {restartItems.join(', ')}.
+            </p>
+          )}
+          <ErrorText>{err}</ErrorText>
+          {configPath && <p className="text-xs text-ink-2">Stored in {configPath}</p>}
+        </div>
+      </div>
+    </Card>
   )
 }
 

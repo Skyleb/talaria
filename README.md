@@ -16,6 +16,9 @@ roadmap below.
 
 Everything lives next to the binary: `talaria.toml` (config) and `data/`
 (database + uploaded files). Move the folder, and your server moves with it.
+All server settings are editable in the app under **Settings → Admin — server
+configuration**; the TOML file is just where they're stored, and hand-editing
+it remains supported.
 
 ## Remote access (DDNS)
 
@@ -25,8 +28,9 @@ Friends outside your network connect through a domain pointed at your home IP:
    (free, no expiry nags, Let's Encrypt-friendly).
 2. Forward **TCP 80 and 443** (and **UDP 50000** for calls) on your router to
    the machine running Talaria (see `docs/port-forwarding.md`).
-3. Configure `talaria.toml` — Talaria keeps the DDNS record updated itself,
-   no separate updater client needed:
+3. In **Settings → Admin — server configuration**, set the HTTPS domain and
+   enable Dynamic DNS with your DuckDNS token — Talaria keeps the DDNS record
+   updated itself, no separate updater client needed. (Equivalent TOML:)
 
    ```toml
    [tls]
@@ -41,7 +45,8 @@ Friends outside your network connect through a domain pointed at your home IP:
 
 4. Restart Talaria. It updates DuckDNS every 5 minutes, fetches a free
    Let's Encrypt certificate automatically, and serves
-   `https://yourname.duckdns.org`.
+   `https://yourname.duckdns.org`. (DDNS changes apply immediately on save;
+   domain/port changes need the restart.)
 
 Other providers work via `provider = "custom"` with
 `url = "https://.../update?hostname={DOMAIN}&password={TOKEN}"`, or keep

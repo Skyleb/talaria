@@ -128,3 +128,31 @@ export interface SessionInfo {
   ip: string
   current: boolean
 }
+
+// Admin-editable server configuration (mirrors internal/api configPayload).
+export interface ServerConfig {
+  server: {
+    name: string
+    http_port: number
+    max_upload_mb: number
+    open_browser: boolean
+  }
+  tls: {
+    mode: 'auto' | 'acme' | 'selfsigned' | 'off'
+    domain: string
+    acme_email: string
+    https_port: number
+  }
+  ddns: {
+    enabled: boolean
+    provider: 'duckdns' | 'custom'
+    domain: string
+    token: string
+    url: string
+    interval_minutes: number
+  }
+  webrtc: {
+    udp_port: number
+    public_ip: string
+  }
+}

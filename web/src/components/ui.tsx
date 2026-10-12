@@ -1,5 +1,11 @@
 // Small shared UI primitives, styled with the theme tokens.
-import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, useEffect } from 'react'
+import {
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  useEffect,
+} from 'react'
 
 export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(' ')
@@ -26,6 +32,19 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
       className={cx(
         'w-full rounded-lg border border-edge bg-bg-0 px-3 py-2 text-sm text-ink',
         'placeholder:text-ink-2 focus:border-accent focus:outline-none',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={cx(
+        'w-full rounded-lg border border-edge bg-bg-0 px-3 py-2 text-sm text-ink',
+        'focus:border-accent focus:outline-none',
         className,
       )}
       {...props}

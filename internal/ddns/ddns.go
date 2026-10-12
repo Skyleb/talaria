@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,6 +23,37 @@ type Config struct {
 	URL      string // custom provider only
 	Interval time.Duration
 }
+
+// Runner owns a single background update loop whose config can be swapped
+// at runtime (the admin settings UI reconfigures DDNS without a restart).
+type Runner struct {
+	log    *slog.Logger
+	mu     sync.Mutex
+	cancel context.CancelFunc
+}
+
+func NewRunner(log *slog.Logger) *Runner { return &Runner{log: log} }
+
+// Set stops any current loop and, when cfg.Domain is non-empty, starts a
+// new one with cfg.
+func (r *Runner) Set(cfg Config) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cancel != nil {
+		r.cancel()
+		r.cancel = nil
+	}
+	if cfg.Domain == "" {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r.cancel = cancel
+	go Run(ctx, cfg, r.log)
+	r.log.Info("ddns updater running", "provider", cfg.Provider, "domain", cfg.Domain)
+}
+
+// Stop halts the loop until the next Set.
+func (r *Runner) Stop() { r.Set(Config{}) }
 
 // Run updates immediately, then on every interval tick until ctx ends.
 func Run(ctx context.Context, cfg Config, log *slog.Logger) {

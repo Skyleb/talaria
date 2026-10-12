@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/skyle/talaria/internal/auth"
 	"github.com/skyle/talaria/internal/blob"
 	"github.com/skyle/talaria/internal/config"
+	"github.com/skyle/talaria/internal/ddns"
 	"github.com/skyle/talaria/internal/gateway"
 	"github.com/skyle/talaria/internal/store"
 )
@@ -21,6 +23,11 @@ type Server struct {
 	Config  *config.Config
 	Log     *slog.Logger
 	Version string
+	// DDNS lets the admin config endpoint hot-apply dynamic-DNS changes.
+	DDNS *ddns.Runner
+
+	// cfgMu serializes admin edits to Config.
+	cfgMu sync.Mutex
 }
 
 type apiError struct {

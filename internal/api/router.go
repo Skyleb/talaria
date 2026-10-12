@@ -67,6 +67,8 @@ func (s *Server) Router() http.Handler {
 	authed.HandleFunc("POST /api/v1/admin/invites", s.adminOnly(s.handleAdminCreateInvite))
 	authed.HandleFunc("DELETE /api/v1/admin/invites/{code}", s.adminOnly(s.handleAdminRevokeInvite))
 	authed.HandleFunc("GET /api/v1/admin/stats", s.adminOnly(s.handleAdminStats))
+	authed.HandleFunc("GET /api/v1/admin/config", s.adminOnly(s.handleAdminGetConfig))
+	authed.HandleFunc("PUT /api/v1/admin/config", s.adminOnly(s.handleAdminPutConfig))
 
 	authed.HandleFunc("GET /api/v1/gateway", s.handleGateway)
 
