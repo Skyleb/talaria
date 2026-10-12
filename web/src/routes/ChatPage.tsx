@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router'
-import { Hash, Users } from 'lucide-react'
+import { Hash, Phone, Users } from 'lucide-react'
 import { dmTitle, displayName, useApp } from '../store'
+import { useCall } from '../call'
 import { PageHeader } from './AppShell'
 import { MessageList } from '../components/chat/MessageList'
 import { Composer } from '../components/chat/Composer'
+import { CallPanel } from '../components/call/CallPanel'
 import { Avatar } from '../components/Avatar'
 import { cx } from '../components/ui'
 import type { Message } from '../lib/types'
@@ -55,23 +57,44 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
           title={title}
           subtitle={channel.topic || undefined}
           right={
-            !isDM && (
-              <button
-                className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
-                title="Members"
-                onClick={() => setMembersOpen((v) => !v)}
-              >
-                <Users size={18} />
-              </button>
-            )
+            <>
+              <StartCallButton channelId={channelId} />
+              {!isDM && (
+                <button
+                  className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
+                  title="Members"
+                  onClick={() => setMembersOpen((v) => !v)}
+                >
+                  <Users size={18} />
+                </button>
+              )}
+            </>
           }
         />
+        <CallPanel channelId={channelId} />
         <MessageList channelId={channelId} onReply={setReplyTo} />
         <TypingLine channelId={channelId} />
         <Composer channelId={channelId} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
       </div>
       {!isDM && groupId && <MemberPanel groupId={groupId} open={membersOpen} onClose={() => setMembersOpen(false)} />}
     </div>
+  )
+}
+
+function StartCallButton({ channelId }: { channelId: string }) {
+  const joinedChannelId = useCall((s) => s.joinedChannelId)
+  const participants = useCall((s) => s.calls[channelId]) ?? []
+  const join = useCall((s) => s.join)
+  // Hidden while a call already shows a banner/panel in this channel.
+  if (joinedChannelId === channelId || participants.length > 0) return null
+  return (
+    <button
+      className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-success"
+      title="Start a call"
+      onClick={() => join(channelId)}
+    >
+      <Phone size={18} />
+    </button>
   )
 }
 

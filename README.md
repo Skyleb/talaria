@@ -69,11 +69,17 @@ documented in `docs/protocol.md`.
 
 ## Roadmap
 
-- **Phase 1 (this)** — accounts, friends, groups, invites, realtime text chat,
+- **Phase 1 (done)** — accounts, friends, groups, invites, realtime text chat,
   replies, typing, read states, file uploads with inline image/video/audio
   playback, profiles/avatars, light+dark mobile-first UI, auto-HTTPS for DDNS.
-- **Phase 2** — voice & video calls + screen share: WebRTC SFU embedded in the
-  same binary (Pion), direct P2P for 1:1 calls, one forwarded UDP port.
+- **Phase 2 (done)** — voice & video calls + screen share through a WebRTC SFU
+  embedded in the same binary (Pion). Every participant uploads once; all call
+  media shares **one UDP port (50000)** — forward it on your router for remote
+  callers. Calls work in any group channel or DM (DMs ring the other side).
+  Note: browsers require HTTPS (or localhost) to use mic/camera — LAN users
+  over plain HTTP join listen-only, so enable self-signed TLS or DDNS for
+  full calls. Planned refinements: direct P2P transport for 1:1 calls,
+  simulcast, embedded TURN.
 - **Phase 3** — presence: Currently Playing (optional tiny desktop helper) and
   Currently Listening.
 - **Phase 4** — synchronized listening/watching: group playlists mixing

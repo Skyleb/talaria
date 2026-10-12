@@ -47,14 +47,26 @@
   provider links, playlists, playback sessions with the server-authoritative
   `position_ms` + `anchor_server_ms` clock pattern) so later work is additive.
 
-## Phase 2 plan (voice/video) — already provisioned
+## Phase 2 (voice/video) — shipped
 
-- Pion SFU inside the same binary; all participants' media muxed over **one
-  UDP port** (`webrtc.udp_port`, via `ice.UDPMux`); optional embedded TURN.
-- 1:1 calls negotiate direct P2P (server still signals); group calls always
-  SFU; simulcast for group video.
-- Signaling rides the existing gateway (`rtc.*` / `call.*` reserved events).
-- `getUserMedia` requires a secure context — already solved by the TLS story.
+- Pion SFU inside the binary (`internal/rtc`). Every participant holds two
+  PeerConnections: a **publisher** (client offers; mic/cam/screen up) and a
+  **subscriber** (server offers; everyone else's tracks down) — the split
+  means offer glare is impossible.
+- All media for all peers muxes over **one UDP port** (`webrtc.udp_port`,
+  default 50000) via `ice.UDPMuxDefault`. Remote callers' ICE works through
+  `SetNAT1To1IPs` using `webrtc.public_ip` or, when unset, the resolved
+  `tls.domain` address.
+- Signaling rides the gateway's reserved `call.*` / `rtc.*` events. Downlink
+  streams are named `<userId>|<mic|cam|screen>` so the client attributes
+  tracks. Keyframes: PLI forwarded from subscribers plus a 3 s safety ticker.
+- Membership edge cases: closing the tab (PC failure) or losing every gateway
+  connection both auto-remove the participant. `call_sessions` /
+  `call_participants` record history; dangling rows are closed on startup.
+- `getUserMedia` requires a secure context — plain-HTTP LAN clients join
+  listen-only (the UI explains); TLS unlocks mic/cam.
+- Future refinements: direct P2P transport for 1:1 calls, simulcast,
+  embedded TURN (`webrtc.enable_turn` is reserved in config).
 
 ## Phase 3 plan (presence)
 

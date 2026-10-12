@@ -1,6 +1,7 @@
 // Gateway: the single WebSocket connection with resume, heartbeat/clock-offset
 // estimation (groundwork for Phase 4 synced playback), and store dispatch.
 import { registerReadSender, useApp } from './store'
+import { handleCallEvent, setActiveCalls, useCall } from './call'
 import type {
   Channel, FriendEntry, Friendship, Group, GroupMember, GroupSummary,
   Message, ReadyPayload, User,
@@ -32,6 +33,8 @@ export function connectGateway() {
 }
 
 export function disconnectGateway() {
+  // Hang up first while the socket can still carry the leave command.
+  useCall.getState().leave()
   stopped = true
   document.removeEventListener('visibilitychange', onVisible)
   cleanup()
@@ -169,10 +172,15 @@ let pendingFreshId = ''
 
 function handleEvent(t: string, d: any) {
   const st = useApp.getState()
+  if (t.startsWith('call.') || t.startsWith('rtc.')) {
+    handleCallEvent(t, d)
+    return
+  }
   switch (t) {
     case 'ready':
       st.applyReady(d as ReadyPayload)
       st.setGatewayStatus('online')
+      setActiveCalls(d.active_calls ?? [])
       break
 
     case 'message.create': {

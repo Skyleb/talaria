@@ -23,6 +23,7 @@ import (
 	"github.com/skyle/lantern/internal/blob"
 	"github.com/skyle/lantern/internal/config"
 	"github.com/skyle/lantern/internal/gateway"
+	"github.com/skyle/lantern/internal/rtc"
 	"github.com/skyle/lantern/internal/store"
 	"github.com/skyle/lantern/internal/tlsx"
 )
@@ -68,6 +69,27 @@ func main() {
 
 	authMgr := auth.NewManager(st)
 	hub := gateway.NewHub(st, log)
+
+	// Phase 2: the embedded SFU for voice/video/screen share. The public IP
+	// (for remote callers' ICE) comes from config, else the DDNS domain.
+	publicIP := cfg.WebRTC.PublicIP
+	if publicIP == "" && cfg.TLS.Domain != "" {
+		if ips, err := net.LookupIP(cfg.TLS.Domain); err == nil {
+			for _, ip := range ips {
+				if v4 := ip.To4(); v4 != nil && !v4.IsPrivate() && !v4.IsLoopback() {
+					publicIP = v4.String()
+					break
+				}
+			}
+		}
+	}
+	sfu, err := rtc.NewManager(st, hub, log, cfg.WebRTC.UDPPort, publicIP)
+	if err != nil {
+		log.Error("start webrtc sfu (voice/video disabled)", "err", err)
+	} else {
+		hub.SetCallHandler(sfu)
+	}
+
 	srv := &api.Server{
 		Store: st, Hub: hub, Auth: authMgr, Blobs: blobs,
 		Config: cfg, Log: log, Version: version,

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { Hash, Menu, Plus, Settings, Users, UserPlus, X, LogOut } from 'lucide-react'
+import { Hash, Menu, Phone, PhoneOff, Plus, Settings, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
 import { api } from '../lib/api'
-import { dmOther, dmTitle, useApp } from '../store'
+import { dmOther, dmTitle, displayName, useApp } from '../store'
+import { useCall } from '../call'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
 import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
@@ -42,6 +43,7 @@ export default function AppShell() {
             {gatewayStatus === 'connecting' ? 'Reconnecting…' : 'Offline — trying to reconnect'}
           </div>
         )}
+        <RingToast />
         <Routes>
           <Route index element={<Navigate to="friends" replace />} />
           <Route path="friends" element={<FriendsPage onMenu={() => setLeftOpen(true)} />} />
@@ -61,6 +63,38 @@ function GroupRedirect() {
   const chIds = useApp((s) => s.groupChannelIds[groupId])
   if (chIds?.length) return <Navigate to={`/app/g/${groupId}/${chIds[0]}`} replace />
   return <Navigate to="/app/friends" replace />
+}
+
+// RingToast: an incoming DM call invitation.
+function RingToast() {
+  const ring = useCall((s) => s.ring)
+  const join = useCall((s) => s.join)
+  const dismissRing = useCall((s) => s.dismissRing)
+  const users = useApp((s) => s.users)
+  const navigate = useNavigate()
+  if (!ring) return null
+  return (
+    <div className="flex items-center gap-3 border-b border-edge bg-accent/10 px-4 py-2">
+      <Phone size={18} className="animate-pulse text-accent" />
+      <span className="min-w-0 flex-1 truncate text-sm text-ink">
+        <strong>{displayName(users, ring.fromUserId)}</strong> is calling you
+      </span>
+      <Button
+        className="px-3 py-1.5 text-xs"
+        onClick={() => {
+          const chId = ring.channelId
+          dismissRing()
+          navigate(`/app/dm/${chId}`)
+          join(chId)
+        }}
+      >
+        <Phone size={14} /> Join
+      </Button>
+      <Button variant="ghost" className="px-2 py-1.5 text-xs" onClick={dismissRing}>
+        <PhoneOff size={14} />
+      </Button>
+    </div>
+  )
 }
 
 function GroupRail() {
@@ -211,6 +245,7 @@ function GroupChannelList({ groupId }: { groupId: string }) {
   const members = useApp((s) => s.groupMembers[groupId])
   const latestIds = useApp((s) => s.latestIds)
   const readStates = useApp((s) => s.readStates)
+  const calls = useCall((s) => s.calls)
   const { channelId } = useParams()
   const navigate = useNavigate()
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -238,6 +273,7 @@ function GroupChannelList({ groupId }: { groupId: string }) {
           if (!c) return null
           const latest = latestIds[cid]
           const unread = latest && (!readStates[cid] || readStates[cid] < latest)
+          const inCall = (calls[cid]?.length ?? 0) > 0
           return (
             <button
               key={cid}
@@ -250,7 +286,10 @@ function GroupChannelList({ groupId }: { groupId: string }) {
             >
               <Hash size={16} className="shrink-0 opacity-60" />
               <span className="truncate">{c.name}</span>
-              {unread && channelId !== cid && <span className="ml-auto h-2 w-2 rounded-full bg-accent" />}
+              <span className="ml-auto flex items-center gap-1.5">
+                {inCall && <Volume2 size={14} className="text-success" />}
+                {unread && channelId !== cid && <span className="h-2 w-2 rounded-full bg-accent" />}
+              </span>
             </button>
           )
         })}
@@ -337,6 +376,7 @@ function DMList() {
   const me = useApp((s) => s.me)
   const latestIds = useApp((s) => s.latestIds)
   const readStates = useApp((s) => s.readStates)
+  const calls = useCall((s) => s.calls)
   const { channelId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -388,7 +428,10 @@ function DMList() {
             >
               <Avatar user={otherUser} size={28} online={otherUser ? !!online[otherUser.id] : undefined} />
               <span className="truncate">{dmTitle(c, me.id, users)}</span>
-              {unread && channelId !== cid && <span className="ml-auto h-2 w-2 rounded-full bg-accent" />}
+              <span className="ml-auto flex items-center gap-1.5">
+                {(calls[cid]?.length ?? 0) > 0 && <Volume2 size={14} className="text-success" />}
+                {unread && channelId !== cid && <span className="h-2 w-2 rounded-full bg-accent" />}
+              </span>
             </button>
           )
         })}

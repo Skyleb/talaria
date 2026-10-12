@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ const (
 type Hub struct {
 	store *store.Store
 	log   *slog.Logger
+	call  CallHandler // set by main when the SFU is enabled; may be nil
 
 	mu       sync.RWMutex
 	byUser   map[string]map[*Client]struct{}
@@ -30,6 +32,17 @@ type Hub struct {
 	typingMu sync.Mutex
 	typing   map[string]int64 // userID:channelID -> last sent (ms), for throttling
 }
+
+// CallHandler is implemented by the rtc SFU manager (defined as an interface
+// here to avoid a gateway<->rtc import cycle).
+type CallHandler interface {
+	HandleCommand(ctx context.Context, userID, t string, d json.RawMessage)
+	OnUserOffline(userID string)
+	ActiveCallsFor(ctx context.Context, userID string) []any
+}
+
+// SetCallHandler wires the SFU in; call before serving connections.
+func (h *Hub) SetCallHandler(c CallHandler) { h.call = c }
 
 type resumeSession struct {
 	userID   string
@@ -131,6 +144,9 @@ func (h *Hub) detach(c *Client) {
 			delete(h.byUser, c.userID)
 			h.mu.Unlock()
 			h.broadcastPresence(c.userID, "offline")
+			if h.call != nil {
+				h.call.OnUserOffline(c.userID)
+			}
 			return
 		}
 	}
@@ -207,6 +223,11 @@ func (h *Hub) broadcastPresence(userID, status string) {
 
 // handleCommand processes a client->server cmd frame.
 func (h *Hub) handleCommand(ctx context.Context, c *Client, f *Frame) {
+	// Phase 2: calls and WebRTC signaling route to the SFU.
+	if h.call != nil && (strings.HasPrefix(f.T, "call.") || strings.HasPrefix(f.T, "rtc.")) {
+		h.call.HandleCommand(ctx, c.userID, f.T, f.D)
+		return
+	}
 	switch f.T {
 	case CmdTypingStart:
 		var d struct {
