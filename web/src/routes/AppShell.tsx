@@ -394,7 +394,7 @@ function DMList() {
   return (
     <>
       <div className="border-b border-edge px-4 py-3">
-        <h2 className="font-semibold text-ink">Lantern</h2>
+        <h2 className="font-semibold text-ink">Talaria</h2>
       </div>
       <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
         <button

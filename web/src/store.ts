@@ -84,10 +84,10 @@ export const useApp = create<AppState>((set, get) => ({
   hasMore: {},
   loaded: {},
 
-  theme: (localStorage.getItem('lantern-theme') as Theme) || 'system',
+  theme: (localStorage.getItem('talaria-theme') as Theme) || 'system',
 
   setTheme: (t) => {
-    localStorage.setItem('lantern-theme', t)
+    localStorage.setItem('talaria-theme', t)
     applyThemeClass(t)
     set({ theme: t })
   },

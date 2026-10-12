@@ -15,12 +15,12 @@ import (
 
 	"github.com/alexedwards/argon2id"
 
-	"github.com/skyle/lantern/internal/model"
-	"github.com/skyle/lantern/internal/store"
+	"github.com/skyle/talaria/internal/model"
+	"github.com/skyle/talaria/internal/store"
 )
 
 const (
-	CookieName     = "lantern_session"
+	CookieName     = "talaria_session"
 	sessionTTL     = 30 * 24 * time.Hour
 	touchInterval  = time.Hour // only rewrite last_seen/expiry this often
 )

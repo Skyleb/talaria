@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/skyle/lantern/internal/model"
+	"github.com/skyle/talaria/internal/model"
 )
 
 // newInviteCode returns a 10-char Crockford-base32 code (no ambiguous chars).

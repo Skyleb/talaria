@@ -1,4 +1,4 @@
-// Package config loads and persists Lantern's TOML configuration.
+// Package config loads and persists Talaria's TOML configuration.
 package config
 
 import (
@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Server ServerConfig `toml:"server"`
 	TLS    TLSConfig    `toml:"tls"`
+	DDNS   DDNSConfig   `toml:"ddns"`
 	WebRTC WebRTCConfig `toml:"webrtc"`
 	Net    NetConfig    `toml:"net"`
 
@@ -40,6 +41,20 @@ type TLSConfig struct {
 	HTTPSPort int `toml:"https_port"`
 }
 
+// DDNSConfig makes Talaria keep a dynamic-DNS hostname updated itself —
+// no separate updater client needed. With provider "duckdns", set token
+// (from duckdns.org) and leave url empty; tls.domain is used as the hostname
+// unless domain is set here.
+type DDNSConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	Provider string `toml:"provider"` // "duckdns" or "custom"
+	Domain   string `toml:"domain"`   // defaults to tls.domain
+	Token    string `toml:"token"`
+	URL      string `toml:"url"` // custom provider: templates {DOMAIN} {TOKEN}
+	// IntervalMinutes between updates (default 5).
+	IntervalMinutes int `toml:"interval_minutes"`
+}
+
 // WebRTCConfig is written now so Phase 2 (voice/video SFU) is purely additive.
 type WebRTCConfig struct {
 	UDPPort    int    `toml:"udp_port"`
@@ -55,7 +70,7 @@ type NetConfig struct {
 func Default() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Name:        "Lantern",
+			Name:        "Talaria",
 			HTTPPort:    8080,
 			DataDir:     "./data",
 			MaxUploadMB: 500,
@@ -64,6 +79,10 @@ func Default() *Config {
 		TLS: TLSConfig{
 			Mode:      "auto",
 			HTTPSPort: 443,
+		},
+		DDNS: DDNSConfig{
+			Provider:        "duckdns",
+			IntervalMinutes: 5,
 		},
 		WebRTC: WebRTCConfig{
 			UDPPort:  50000,
@@ -103,13 +122,13 @@ func (c *Config) Save() error {
 
 func (c *Config) Path() string { return c.path }
 
-// DefaultPath returns lantern.toml next to the executable (portable mode).
+// DefaultPath returns talaria.toml next to the executable (portable mode).
 func DefaultPath() string {
 	exe, err := os.Executable()
 	if err != nil {
-		return "lantern.toml"
+		return "talaria.toml"
 	}
-	return filepath.Join(filepath.Dir(exe), "lantern.toml")
+	return filepath.Join(filepath.Dir(exe), "talaria.toml")
 }
 
 // ResolveDataDir resolves the configured data dir (relative paths are relative
@@ -135,7 +154,7 @@ func (c *Config) ResolveDataDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("data dir %s not writable and no user config dir: %w", dir, err)
 	}
-	fallback := filepath.Join(base, "Lantern", "data")
+	fallback := filepath.Join(base, "Talaria", "data")
 	if err := os.MkdirAll(fallback, 0o755); err != nil {
 		return "", err
 	}

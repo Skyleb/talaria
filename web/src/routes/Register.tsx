@@ -36,7 +36,7 @@ export default function Register() {
   }
 
   return (
-    <AuthCard title="Join this Lantern server">
+    <AuthCard title="Join this Talaria server">
       <form className="space-y-4" onSubmit={submit}>
         <div>
           <Label>Invite code</Label>

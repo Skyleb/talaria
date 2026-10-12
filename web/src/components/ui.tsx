@@ -95,7 +95,7 @@ export function AuthCard({ title, children }: { title: string; children: ReactNo
     <div className="flex min-h-full items-center justify-center bg-bg-0 p-4">
       <div className="w-full max-w-sm rounded-2xl bg-bg-1 p-6 shadow-lg border border-edge">
         <div className="mb-6 text-center">
-          <div className="mb-2 text-3xl">🏮</div>
+          <div className="mb-2 text-3xl">🪽</div>
           <h1 className="text-xl font-bold text-ink">{title}</h1>
         </div>
         {children}

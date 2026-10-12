@@ -11,8 +11,8 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 
-	"github.com/skyle/lantern/internal/model"
-	"github.com/skyle/lantern/internal/store"
+	"github.com/skyle/talaria/internal/model"
+	"github.com/skyle/talaria/internal/store"
 )
 
 const (

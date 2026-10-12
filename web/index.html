@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <title>Lantern</title>
+    <title>Talaria</title>
     <script>
       // Apply theme before first paint to avoid a flash.
       (function () {
-        var t = localStorage.getItem('lantern-theme') || 'system';
+        var t = localStorage.getItem('talaria-theme') || 'system';
         var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.classList.add('dark');
       })();

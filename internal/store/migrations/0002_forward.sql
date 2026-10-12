@@ -1,4 +1,4 @@
--- Lantern migration 0002: forward-looking tables for Phases 2-4 so later
+-- Talaria migration 0002: forward-looking tables for Phases 2-4 so later
 -- changes stay additive. Unused tables cost nothing.
 
 -- Phase 2: calls

@@ -303,7 +303,7 @@ function AdminSection() {
             <Stat label="Files" value={stats.files} />
             <Stat label="Storage" value={formatBytes(stats.blob_bytes ?? 0)} />
           </div>
-          <p className="mt-3 text-xs text-ink-2">Lantern {stats.version}</p>
+          <p className="mt-3 text-xs text-ink-2">Talaria {stats.version}</p>
         </Card>
       )}
     </>

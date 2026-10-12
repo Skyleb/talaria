@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/skyle/lantern/internal/model"
+	"github.com/skyle/talaria/internal/model"
 )
 
 const userCols = `id, username, display_name, password_hash, avatar_file_id,

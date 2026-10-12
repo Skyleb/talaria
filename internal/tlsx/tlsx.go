@@ -83,7 +83,7 @@ func SelfSigned(dataDir string, extraHosts ...string) (tls.Certificate, error) {
 	}
 	tmpl := x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "Lantern self-signed", Organization: []string{"Lantern"}},
+		Subject:      pkix.Name{CommonName: "Talaria self-signed", Organization: []string{"Talaria"}},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(2 * 365 * 24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/skyle/lantern/internal/model"
-	"github.com/skyle/lantern/internal/store"
+	"github.com/skyle/talaria/internal/model"
+	"github.com/skyle/talaria/internal/store"
 )
 
 const (

@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/skyle/lantern/internal/auth"
-	"github.com/skyle/lantern/internal/gateway"
-	"github.com/skyle/lantern/internal/model"
+	"github.com/skyle/talaria/internal/auth"
+	"github.com/skyle/talaria/internal/gateway"
+	"github.com/skyle/talaria/internal/model"
 )
 
 // requireGroupRole loads the group and verifies the caller holds one of roles

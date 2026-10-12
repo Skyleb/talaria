@@ -14,12 +14,12 @@ tasks:
       - npm run build
 
   build:
-    desc: Build lantern.exe for this machine (client embedded)
+    desc: Build talaria.exe for this machine (client embedded)
     deps: [build:web]
     env:
       CGO_ENABLED: '0'
     cmds:
-      - go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}}" -o dist/lantern.exe ./cmd/lantern
+      - go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}}" -o dist/talaria.exe ./cmd/talaria
     vars:
       VERSION:
         sh: git describe --tags --always --dirty 2>nul || echo dev

@@ -3,11 +3,11 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 
-$devConfig = Join-Path $root 'dev.lantern.toml'
+$devConfig = Join-Path $root 'dev.talaria.toml'
 if (-not (Test-Path $devConfig)) {
   @'
 [server]
-name = "Lantern Dev"
+name = "Talaria Dev"
 http_port = 8080
 data_dir = "./data-dev"
 max_upload_mb = 500
@@ -18,7 +18,7 @@ mode = "off"
 '@ | Out-File -Encoding utf8 $devConfig
 }
 
-$go = Start-Process -PassThru -NoNewWindow go -ArgumentList 'run', './cmd/lantern', '--config', $devConfig -WorkingDirectory $root
+$go = Start-Process -PassThru -NoNewWindow go -ArgumentList 'run', './cmd/talaria', '--config', $devConfig -WorkingDirectory $root
 try {
   Set-Location (Join-Path $root 'web')
   npm run dev

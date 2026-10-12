@@ -32,7 +32,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       onDone()
       if (res.restart_needed_for_tls) {
         alert(
-          'Domain saved. HTTPS via Let\'s Encrypt activates the next time Lantern starts.\n\n' +
+          'Domain saved. HTTPS via Let\'s Encrypt activates the next time Talaria starts.\n\n' +
             'Make sure your router forwards TCP ports 80 and 443 to this machine first.',
         )
       }
@@ -45,7 +45,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <AuthCard title="Welcome to Lantern">
+    <AuthCard title="Welcome to Talaria">
       {step === 0 && (
         <form
           className="space-y-4"
@@ -64,7 +64,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
           </p>
           <div>
             <Label>Server name</Label>
-            <Input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="Skyle's Lantern" />
+            <Input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="Skyle's Talaria" />
           </div>
           <div>
             <Label>Username</Label>
@@ -98,10 +98,10 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         >
           <p className="text-sm text-ink-1">
             <strong className="text-ink">Remote access (optional).</strong> If you have a DDNS domain
-            (DuckDNS, No-IP, …) pointed at your home IP, enter it and Lantern will fetch a free
+            (DuckDNS, No-IP, …) pointed at your home IP, enter it and Talaria will fetch a free
             HTTPS certificate on next start. You'll need to forward TCP ports 80 and 443 on your
-            router. Skip this to use Lantern on your local network only — you can add it later in
-            <code className="mx-1">lantern.toml</code>.
+            router. Skip this to use Talaria on your local network only — you can add it later in
+            <code className="mx-1">talaria.toml</code>.
           </p>
           <div>
             <Label>DDNS domain</Label>

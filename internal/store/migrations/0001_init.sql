@@ -1,4 +1,4 @@
--- Lantern migration 0001: Phase 1 core schema.
+-- Talaria migration 0001: Phase 1 core schema.
 -- IDs are ULIDs (TEXT, lexicographically time-ordered). Timestamps are Unix ms.
 
 CREATE TABLE settings (

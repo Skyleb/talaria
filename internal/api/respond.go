@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/skyle/lantern/internal/auth"
-	"github.com/skyle/lantern/internal/blob"
-	"github.com/skyle/lantern/internal/config"
-	"github.com/skyle/lantern/internal/gateway"
-	"github.com/skyle/lantern/internal/store"
+	"github.com/skyle/talaria/internal/auth"
+	"github.com/skyle/talaria/internal/blob"
+	"github.com/skyle/talaria/internal/config"
+	"github.com/skyle/talaria/internal/gateway"
+	"github.com/skyle/talaria/internal/store"
 )
 
 type Server struct {

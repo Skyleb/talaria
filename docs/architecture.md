@@ -1,4 +1,4 @@
-# Lantern architecture
+# Talaria architecture
 
 ## Shape
 
@@ -6,7 +6,7 @@
   (`internal/web`). SQLite via `modernc.org/sqlite` (pure Go → trivially
   cross-compiled with `CGO_ENABLED=0`).
 - **Data layout** (next to the binary by default, `data_dir` in config):
-  - `lantern.db` (+ `-wal`, `-shm`) — all relational state
+  - `talaria.db` (+ `-wal`, `-shm`) — all relational state
   - `blobs/<sha256[0:2]>/<sha256>` — content-addressed upload storage (dedup)
   - `tmp/` — upload staging (same volume → atomic rename)
   - `certs/` — ACME cache / self-signed cert

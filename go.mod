@@ -1,4 +1,4 @@
-module github.com/skyle/lantern
+module github.com/skyle/talaria
 
 go 1.26.0
 

@@ -31,7 +31,7 @@ export default function Login() {
   }
 
   return (
-    <AuthCard title="Sign in to Lantern">
+    <AuthCard title="Sign in to Talaria">
       <form className="space-y-4" onSubmit={submit}>
         <div>
           <Label>Username</Label>

@@ -1,4 +1,4 @@
-# Lantern realtime protocol
+# Talaria realtime protocol
 
 One WebSocket per client at `GET /api/v1/gateway` (cookie-authenticated).
 JSON text frames with this envelope:

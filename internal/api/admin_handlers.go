@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/skyle/lantern/internal/auth"
-	"github.com/skyle/lantern/internal/model"
-	"github.com/skyle/lantern/internal/store"
+	"github.com/skyle/talaria/internal/auth"
+	"github.com/skyle/talaria/internal/model"
+	"github.com/skyle/talaria/internal/store"
 )
 
 func timeoutCtx() (context.Context, context.CancelFunc) {

@@ -1,4 +1,4 @@
-# 🏮 Lantern
+# 🪽 Talaria
 
 A portable, self-hosted chat server for friends — one binary, no install.
 Think "Discord you run at home": async text chat, file sharing with inline
@@ -8,33 +8,44 @@ roadmap below.
 
 ## Quick start
 
-1. Download (or build) `lantern.exe` (Windows) / `lantern-darwin-*` (macOS) /
-   `lantern-linux-*` (Linux).
+1. Download (or build) `talaria.exe` (Windows) / `talaria-darwin-*` (macOS) /
+   `talaria-linux-*` (Linux).
 2. Double-click it (or run it in a terminal). Your browser opens the setup
    wizard at `http://localhost:8080`.
 3. Create your admin account, then share an invite link with friends.
 
-Everything lives next to the binary: `lantern.toml` (config) and `data/`
+Everything lives next to the binary: `talaria.toml` (config) and `data/`
 (database + uploaded files). Move the folder, and your server moves with it.
 
 ## Remote access (DDNS)
 
 Friends outside your network connect through a domain pointed at your home IP:
 
-1. Get a free DDNS domain (DuckDNS, No-IP, …) and run its updater (many
-   routers have one built in).
-2. Forward **TCP 80 and 443** on your router to the machine running Lantern
-   (see `docs/port-forwarding.md`).
-3. Enter the domain in the setup wizard — or set it later in `lantern.toml`:
+1. Get a free DDNS domain — [DuckDNS](https://www.duckdns.org) is recommended
+   (free, no expiry nags, Let's Encrypt-friendly).
+2. Forward **TCP 80 and 443** (and **UDP 50000** for calls) on your router to
+   the machine running Talaria (see `docs/port-forwarding.md`).
+3. Configure `talaria.toml` — Talaria keeps the DDNS record updated itself,
+   no separate updater client needed:
 
    ```toml
    [tls]
    mode = "auto"
    domain = "yourname.duckdns.org"
+
+   [ddns]
+   enabled = true
+   provider = "duckdns"
+   token = "your-duckdns-token"   # shown at the top of duckdns.org
    ```
 
-4. Restart Lantern. It fetches a free Let's Encrypt certificate automatically
-   and serves `https://yourname.duckdns.org`.
+4. Restart Talaria. It updates DuckDNS every 5 minutes, fetches a free
+   Let's Encrypt certificate automatically, and serves
+   `https://yourname.duckdns.org`.
+
+Other providers work via `provider = "custom"` with
+`url = "https://.../update?hostname={DOMAIN}&password={TOKEN}"`, or keep
+using your router's built-in DDNS client and skip the `[ddns]` section.
 
 No domain? `mode = "selfsigned"` serves HTTPS on your LAN with a self-signed
 certificate (browsers warn once). Plain HTTP stays available on `:8080` for
@@ -55,7 +66,7 @@ pwsh scripts/dev.ps1          # or: task dev
 
 # Production build for this machine
 cd web && npm run build && cd ..
-go build -o dist/lantern.exe ./cmd/lantern    # or: task build
+go build -o dist/talaria.exe ./cmd/talaria    # or: task build
 
 # Cross-compile all platforms (pure Go — no C toolchains needed)
 pwsh scripts/build.ps1        # or: task build:all

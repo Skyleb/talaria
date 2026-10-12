@@ -1,4 +1,4 @@
-// Lantern — a portable, self-hosted chat server. One binary, no install.
+// Talaria — a portable, self-hosted chat server. One binary, no install.
 package main
 
 import (
@@ -18,28 +18,48 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/skyle/lantern/internal/api"
-	"github.com/skyle/lantern/internal/auth"
-	"github.com/skyle/lantern/internal/blob"
-	"github.com/skyle/lantern/internal/config"
-	"github.com/skyle/lantern/internal/gateway"
-	"github.com/skyle/lantern/internal/rtc"
-	"github.com/skyle/lantern/internal/store"
-	"github.com/skyle/lantern/internal/tlsx"
+	"github.com/skyle/talaria/internal/api"
+	"github.com/skyle/talaria/internal/auth"
+	"github.com/skyle/talaria/internal/blob"
+	"github.com/skyle/talaria/internal/config"
+	"github.com/skyle/talaria/internal/ddns"
+	"github.com/skyle/talaria/internal/gateway"
+	"github.com/skyle/talaria/internal/rtc"
+	"github.com/skyle/talaria/internal/store"
+	"github.com/skyle/talaria/internal/tlsx"
 )
 
 var version = "dev"
 
+// migrateLegacyFile renames old -> new when old exists and new doesn't.
+func migrateLegacyFile(old, new string, log *slog.Logger) {
+	if _, err := os.Stat(new); err == nil {
+		return
+	}
+	if _, err := os.Stat(old); err != nil {
+		return
+	}
+	if err := os.Rename(old, new); err != nil {
+		log.Error("migrate legacy file", "from", old, "to", new, "err", err)
+	} else {
+		log.Info("migrated legacy file", "from", filepath.Base(old), "to", filepath.Base(new))
+	}
+}
+
 func main() {
-	configPath := flag.String("config", config.DefaultPath(), "path to lantern.toml")
+	configPath := flag.String("config", config.DefaultPath(), "path to talaria.toml")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Println("lantern", version)
+		fmt.Println("talaria", version)
 		return
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	// Rebrand migration (Lantern -> Talaria): adopt old config and database
+	// files if the new names don't exist yet.
+	migrateLegacyFile(filepath.Join(filepath.Dir(*configPath), "lantern.toml"), *configPath, log)
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -52,9 +72,15 @@ func main() {
 		os.Exit(1)
 	}
 	cfg.ResolvedDataDir = dataDir
-	log.Info("starting lantern", "version", version, "config", *configPath, "data", dataDir)
+	log.Info("starting talaria", "version", version, "config", *configPath, "data", dataDir)
 
-	st, err := store.Open(filepath.Join(dataDir, "lantern.db"))
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		migrateLegacyFile(
+			filepath.Join(dataDir, "lantern.db"+suffix),
+			filepath.Join(dataDir, "talaria.db"+suffix), log)
+	}
+
+	st, err := store.Open(filepath.Join(dataDir, "talaria.db"))
 	if err != nil {
 		log.Error("open database", "err", err)
 		os.Exit(1)
@@ -96,6 +122,30 @@ func main() {
 	}
 	srv.StartAttachmentGC()
 	startSessionGC(st, log)
+
+	// Built-in dynamic-DNS updater: keeps the hostname pointed at this
+	// connection without a separate updater client.
+	ddnsCtx, ddnsCancel := context.WithCancel(context.Background())
+	defer ddnsCancel()
+	if cfg.DDNS.Enabled {
+		domain := cfg.DDNS.Domain
+		if domain == "" {
+			domain = cfg.TLS.Domain
+		}
+		if domain == "" || (cfg.DDNS.Provider == "duckdns" && cfg.DDNS.Token == "") {
+			log.Error("ddns enabled but missing domain or token; updater not started")
+		} else {
+			go ddns.Run(ddnsCtx, ddns.Config{
+				Provider: cfg.DDNS.Provider,
+				Domain:   domain,
+				Token:    cfg.DDNS.Token,
+				URL:      cfg.DDNS.URL,
+				Interval: time.Duration(cfg.DDNS.IntervalMinutes) * time.Minute,
+			}, log)
+			log.Info("ddns updater running", "provider", cfg.DDNS.Provider, "domain", domain)
+		}
+	}
+
 	handler := srv.Router()
 
 	// Decide the serving mode.
@@ -212,7 +262,7 @@ func startSessionGC(st *store.Store, log *slog.Logger) {
 
 func printWelcome(log *slog.Logger, st *store.Store, cfg *config.Config) {
 	fmt.Println()
-	fmt.Println("  Lantern is running!")
+	fmt.Println("  Talaria is running!")
 	fmt.Printf("    Local:   http://localhost:%d\n", cfg.Server.HTTPPort)
 	if ip := lanIP(); ip != "" {
 		fmt.Printf("    LAN:     http://%s:%d\n", ip, cfg.Server.HTTPPort)

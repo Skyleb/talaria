@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/skyle/lantern/internal/auth"
-	"github.com/skyle/lantern/internal/model"
-	"github.com/skyle/lantern/internal/store"
+	"github.com/skyle/talaria/internal/auth"
+	"github.com/skyle/talaria/internal/model"
+	"github.com/skyle/talaria/internal/store"
 )
 
 // --- setup (first run) ---
@@ -64,7 +64,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(req.ServerName)
 	if name == "" {
-		name = "Lantern"
+		name = "Talaria"
 	}
 	s.Store.SetSetting(r.Context(), "server_name", name)
 	s.Store.SetSetting(r.Context(), "setup_complete", "true")
