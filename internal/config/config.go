@@ -1,0 +1,143 @@
+// Package config loads and persists Lantern's TOML configuration.
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/BurntSushi/toml"
+)
+
+type Config struct {
+	Server ServerConfig `toml:"server"`
+	TLS    TLSConfig    `toml:"tls"`
+	WebRTC WebRTCConfig `toml:"webrtc"`
+	Net    NetConfig    `toml:"net"`
+
+	// Path this config was loaded from (not serialized).
+	path string `toml:"-"`
+	// ResolvedDataDir is the absolute, verified-writable data dir (set at startup).
+	ResolvedDataDir string `toml:"-"`
+}
+
+type ServerConfig struct {
+	Name     string `toml:"name"`
+	HTTPPort int    `toml:"http_port"`
+	DataDir  string `toml:"data_dir"`
+	// MaxUploadMB caps a single file upload.
+	MaxUploadMB int64 `toml:"max_upload_mb"`
+	// OpenBrowser launches the default browser on startup when setup is incomplete.
+	OpenBrowser bool `toml:"open_browser"`
+}
+
+type TLSConfig struct {
+	// Mode: "auto" (ACME when domain set, else plain HTTP), "acme", "selfsigned", "off".
+	Mode      string `toml:"mode"`
+	Domain    string `toml:"domain"`
+	ACMEEmail string `toml:"acme_email"`
+	// HTTPSPort is the TLS listener port (ACME also requires :80 reachable for HTTP-01).
+	HTTPSPort int `toml:"https_port"`
+}
+
+// WebRTCConfig is written now so Phase 2 (voice/video SFU) is purely additive.
+type WebRTCConfig struct {
+	UDPPort    int    `toml:"udp_port"`
+	EnableTURN bool   `toml:"enable_turn"`
+	TURNPort   int    `toml:"turn_port"`
+	PublicIP   string `toml:"public_ip"`
+}
+
+type NetConfig struct {
+	TryUPnP bool `toml:"try_upnp"`
+}
+
+func Default() *Config {
+	return &Config{
+		Server: ServerConfig{
+			Name:        "Lantern",
+			HTTPPort:    8080,
+			DataDir:     "./data",
+			MaxUploadMB: 500,
+			OpenBrowser: true,
+		},
+		TLS: TLSConfig{
+			Mode:      "auto",
+			HTTPSPort: 443,
+		},
+		WebRTC: WebRTCConfig{
+			UDPPort:  50000,
+			TURNPort: 3478,
+		},
+		Net: NetConfig{TryUPnP: true},
+	}
+}
+
+// Load reads the config at path, creating it with defaults if absent.
+func Load(path string) (*Config, error) {
+	cfg := Default()
+	cfg.path = path
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := cfg.Save(); err != nil {
+			return nil, fmt.Errorf("write default config: %w", err)
+		}
+		return cfg, nil
+	}
+	if _, err := toml.DecodeFile(path, cfg); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+func (c *Config) Save() error {
+	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(c.path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return toml.NewEncoder(f).Encode(c)
+}
+
+func (c *Config) Path() string { return c.path }
+
+// DefaultPath returns lantern.toml next to the executable (portable mode).
+func DefaultPath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "lantern.toml"
+	}
+	return filepath.Join(filepath.Dir(exe), "lantern.toml")
+}
+
+// ResolveDataDir resolves the configured data dir (relative paths are relative
+// to the executable, keeping portable mode intact) and verifies writability,
+// falling back to the OS-local app-data dir when the location is read-only.
+func (c *Config) ResolveDataDir() (string, error) {
+	dir := c.Server.DataDir
+	if !filepath.IsAbs(dir) {
+		exe, err := os.Executable()
+		if err == nil {
+			dir = filepath.Join(filepath.Dir(exe), dir)
+		}
+	}
+	if err := os.MkdirAll(dir, 0o755); err == nil {
+		probe := filepath.Join(dir, ".write-probe")
+		if err := os.WriteFile(probe, []byte("ok"), 0o644); err == nil {
+			os.Remove(probe)
+			return dir, nil
+		}
+	}
+	// Read-only install location (zip mount, Program Files): fall back.
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("data dir %s not writable and no user config dir: %w", dir, err)
+	}
+	fallback := filepath.Join(base, "Lantern", "data")
+	if err := os.MkdirAll(fallback, 0o755); err != nil {
+		return "", err
+	}
+	return fallback, nil
+}

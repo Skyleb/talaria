@@ -1,0 +1,37 @@
+# Requires go-task (https://taskfile.dev) — or use scripts/*.ps1 directly.
+version: '3'
+
+tasks:
+  dev:
+    desc: Run Go server (:8080) + Vite dev server (:5173) together
+    cmds:
+      - pwsh -NoProfile -File scripts/dev.ps1
+
+  build:web:
+    desc: Build the web client into internal/web/dist
+    dir: web
+    cmds:
+      - npm run build
+
+  build:
+    desc: Build lantern.exe for this machine (client embedded)
+    deps: [build:web]
+    env:
+      CGO_ENABLED: '0'
+    cmds:
+      - go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}}" -o dist/lantern.exe ./cmd/lantern
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty 2>nul || echo dev
+
+  build:all:
+    desc: Cross-compile for Windows, macOS, and Linux
+    deps: [build:web]
+    cmds:
+      - pwsh -NoProfile -File scripts/build.ps1
+
+  test:
+    desc: Run Go tests and client type checks
+    cmds:
+      - go test ./...
+      - cmd: cd web && npm run lint
