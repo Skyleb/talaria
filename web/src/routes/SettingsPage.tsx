@@ -3,6 +3,7 @@ import { Moon, Monitor, Sun } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
 import { useApp, type Theme } from '../store'
 import { Avatar } from '../components/Avatar'
+import { InviteLinkShare } from '../components/InviteLink'
 import { Button, cx, ErrorText, Input, Label } from '../components/ui'
 import { PageHeader } from './AppShell'
 import type { Invite, SessionInfo, User } from '../lib/types'
@@ -225,7 +226,7 @@ function AdminSection() {
   const [invites, setInvites] = useState<Invite[]>([])
   const [adminUsers, setAdminUsers] = useState<User[]>([])
   const [stats, setStats] = useState<any>(null)
-  const [newInviteUrl, setNewInviteUrl] = useState('')
+  const [newInviteCode, setNewInviteCode] = useState('')
 
   const load = () => {
     api.get<{ invites: Invite[] }>('/api/v1/admin/invites').then((r) => setInvites(r.invites ?? [])).catch(() => {})
@@ -243,16 +244,15 @@ function AdminSection() {
         <Button
           onClick={async () => {
             const r = await api.post<{ invite: Invite }>('/api/v1/admin/invites', {})
-            setNewInviteUrl(`${location.origin}/register?invite=${r.invite.code}`)
+            setNewInviteCode(r.invite.code)
             load()
           }}
         >
           Create invite
         </Button>
-        {newInviteUrl && (
-          <div className="mt-3 flex gap-2">
-            <Input readOnly value={newInviteUrl} onFocus={(e) => e.target.select()} />
-            <Button variant="ghost" onClick={() => navigator.clipboard.writeText(newInviteUrl)}>Copy</Button>
+        {newInviteCode && (
+          <div className="mt-3">
+            <InviteLinkShare path={`/register?invite=${newInviteCode}`} />
           </div>
         )}
         <div className="mt-3 space-y-1">

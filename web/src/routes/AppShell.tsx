@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { Hash, Menu, Plus, Settings, Users, UserPlus, X, Copy, LogOut } from 'lucide-react'
+import { Hash, Menu, Plus, Settings, Users, UserPlus, X, LogOut } from 'lucide-react'
 import { api } from '../lib/api'
 import { dmOther, dmTitle, useApp } from '../store'
 import { Avatar } from '../components/Avatar'
+import { InviteLinkShare } from '../components/InviteLink'
 import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
 import FriendsPage from './FriendsPage'
 import ChatPage from './ChatPage'
@@ -269,18 +270,16 @@ function GroupChannelList({ groupId }: { groupId: string }) {
 }
 
 function InviteModal({ open, onClose, groupId }: { open: boolean; onClose: () => void; groupId: string }) {
-  const [url, setUrl] = useState('')
+  const [code, setCode] = useState('')
   const [error, setError] = useState('')
-  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    setUrl('')
+    setCode('')
     setError('')
-    setCopied(false)
     api
       .post<{ invite: { code: string } }>(`/api/v1/groups/${groupId}/invites`, { expires_in_s: 7 * 24 * 3600 })
-      .then((r) => setUrl(`${location.origin}/invite/${r.invite.code}`))
+      .then((r) => setCode(r.invite.code))
       .catch((e) => setError(e?.message ?? 'Could not create invite'))
   }, [open, groupId])
 
@@ -288,22 +287,10 @@ function InviteModal({ open, onClose, groupId }: { open: boolean; onClose: () =>
     <Modal open={open} onClose={onClose} title="Invite people">
       <p className="mb-3 text-sm text-ink-1">
         Share this link — it works for existing members and brand-new users alike, and expires in 7 days.
+        Pick the address your friend can reach.
       </p>
       <ErrorText>{error}</ErrorText>
-      {url && (
-        <div className="flex gap-2">
-          <Input readOnly value={url} onFocus={(e) => e.target.select()} />
-          <Button
-            variant="ghost"
-            onClick={() => {
-              navigator.clipboard.writeText(url)
-              setCopied(true)
-            }}
-          >
-            <Copy size={16} /> {copied ? 'Copied!' : 'Copy'}
-          </Button>
-        </div>
-      )}
+      {code && <InviteLinkShare path={`/invite/${code}`} />}
     </Modal>
   )
 }

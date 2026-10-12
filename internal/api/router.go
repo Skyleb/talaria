@@ -28,6 +28,7 @@ func (s *Server) Router() http.Handler {
 	authed.HandleFunc("DELETE /api/v1/auth/sessions/{id}", s.handleDeleteSession)
 
 	authed.HandleFunc("GET /api/v1/users/me", s.handleMe)
+	authed.HandleFunc("GET /api/v1/server/info", s.handleServerInfo)
 	authed.HandleFunc("PATCH /api/v1/users/me", s.handleUpdateMe)
 	authed.HandleFunc("GET /api/v1/users/{id}", s.handleGetUser)
 
