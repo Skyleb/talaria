@@ -3,11 +3,11 @@ import {
   ChevronDown, Ear, EarOff, Expand, Grid2x2, Headphones, ListMusic, Maximize2, Mic, MicOff, Monitor, MonitorOff,
   Phone, PhoneOff, SlidersHorizontal, Video, VideoOff, Volume2, VolumeX,
 } from 'lucide-react'
-import { useCall, type RemoteFeed } from '../../call'
+import { useCall, type RemoteFeed, type StreamQuality } from '../../call'
 import { useListen } from '../../listen'
 import { mixer } from '../../audio/mixer'
 import { usePrefs, type AVPrefs } from '../../prefs'
-import { MIC_TIERS } from '../../media/encodings'
+import { MIC_TIERS, CAM_PRESETS } from '../../media/encodings'
 import { displayName, dmTitle, useApp } from '../../store'
 import { Avatar } from '../Avatar'
 import { Button, cx, Select } from '../ui'
@@ -235,6 +235,11 @@ function CallOverlay({ channelId }: { channelId: string }) {
   useEffect(() => {
     if (focusKey && !tiles.some((t) => t.key === focusKey)) setFocusKey(null)
   }, [focusKey, tiles])
+  // The server favours the focused stream when bandwidth is tight.
+  const setFocus = useCall((s) => s.setFocus)
+  useEffect(() => {
+    setFocus(focusKey)
+  }, [focusKey, setFocus])
   // A shared player takes the stage when it appears; the queue closes when
   // the session ends.
   useEffect(() => {
@@ -377,6 +382,11 @@ function TileView({
   const users = useApp((s) => s.users)
   const [menu, setMenu] = useState(false)
   const canAdjust = !!tile.userId && !tile.self
+  // Remote video tiles are keyed "userId|kind", which is also the stream key
+  // for quality choices and layer reports.
+  const streamKey = tile.stream && !tile.self && !tile.listen ? tile.key : undefined
+  const layer = useCall((s) => (streamKey ? s.layers[streamKey] : undefined))
+  const quality = useCall((s) => (streamKey ? (s.quality[streamKey] ?? 'auto') : 'auto'))
   if (tile.listen) {
     return (
       <div
@@ -428,19 +438,41 @@ function TileView({
       >
         {tile.label}
         {tile.muted && <MicOff size={11} className="text-danger" />}
+        {streamKey && layer?.rid && (
+          <span className="rounded bg-white/15 px-1 text-[10px] uppercase tracking-wide">
+            {quality === 'auto' ? 'auto · ' : ''}
+            {LAYER_LABEL[layer.rid] ?? layer.rid}
+          </span>
+        )}
         {canAdjust && <Volume2 size={11} className="opacity-70" />}
       </button>
       {menu && tile.userId && (
-        <VolumePopover userId={tile.userId} name={tile.label} onClose={() => setMenu(false)} />
+        <VolumePopover userId={tile.userId} name={tile.label} streamKey={streamKey} onClose={() => setMenu(false)} />
       )}
     </div>
   )
 }
 
+const LAYER_LABEL: Record<string, string> = { f: 'high', h: 'medium', q: 'low', '': '' }
+
 // VolumePopover: how loud this person is for you (0–200 %), remembered per
-// person on this device.
-function VolumePopover({ userId, name, onClose }: { userId: string; name: string; onClose: () => void }) {
+// person on this device. For a video stream it also offers the quality you
+// receive (Auto lets the server pick for your connection).
+function VolumePopover({
+  userId,
+  name,
+  streamKey,
+  onClose,
+}: {
+  userId: string
+  name: string
+  streamKey?: string
+  onClose: () => void
+}) {
   const [vol, setVol] = useState(() => mixer.getUserVolume(userId))
+  const quality = useCall((s) => (streamKey ? (s.quality[streamKey] ?? 'auto') : 'auto'))
+  const layer = useCall((s) => (streamKey ? s.layers[streamKey] : undefined))
+  const setStreamQuality = useCall((s) => s.setStreamQuality)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -453,7 +485,7 @@ function VolumePopover({ userId, name, onClose }: { userId: string; name: string
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute bottom-8 left-1.5 z-10 w-56 rounded-xl border border-edge bg-bg-1 p-3 text-ink shadow-xl"
+      className="absolute bottom-8 left-1.5 z-10 w-60 rounded-xl border border-edge bg-bg-1 p-3 text-ink shadow-xl"
     >
       <div className="mb-2 flex items-center justify-between text-xs">
         <span className="truncate font-medium">{name}</span>
@@ -473,6 +505,21 @@ function VolumePopover({ userId, name, onClose }: { userId: string; name: string
           className="w-full accent-[var(--color-accent)]"
         />
       </div>
+      {streamKey && (
+        <div className="mt-3">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-1">Video quality</label>
+          <Select value={quality} onChange={(e) => setStreamQuality(streamKey, e.target.value as StreamQuality)}>
+            <option value="auto">Auto{layer?.rid ? ` (${LAYER_LABEL[layer.rid] ?? layer.rid} now)` : ''}</option>
+            <option value="f">High</option>
+            <option value="h">Medium</option>
+            <option value="q">Low</option>
+            <option value="off">Pause video</option>
+          </Select>
+          {layer && layer.bps > 0 && (
+            <p className="mt-1 text-[11px] text-ink-2">Receiving about {Math.round(layer.bps / 1000)} kbps</p>
+          )}
+        </div>
+      )}
       <div className="mt-2 flex justify-between text-[11px] text-ink-2">
         <button onClick={() => update(1)} className="hover:text-ink">
           Reset
@@ -570,6 +617,20 @@ function QualityButton() {
             ))}
           </Select>
           <p className="mt-1 text-xs text-ink-2">{MIC_TIERS[prefs.micTier].hint}</p>
+          <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wide text-ink-1">Camera</label>
+          <Select value={prefs.camPreset} onChange={(e) => set({ camPreset: e.target.value as AVPrefs['camPreset'] })}>
+            {(Object.keys(CAM_PRESETS) as AVPrefs['camPreset'][]).map((p) => (
+              <option key={p} value={p}>
+                {CAM_PRESETS[p].label} · up to {CAM_PRESETS[p].kbps} kbps
+              </option>
+            ))}
+          </Select>
+          <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wide text-ink-1">Screen share</label>
+          <Select value={prefs.screenHint} onChange={(e) => set({ screenHint: e.target.value as AVPrefs['screenHint'] })}>
+            <option value="detail">Sharp text (10 fps)</option>
+            <option value="motion">Smooth motion (30 fps)</option>
+          </Select>
+          <p className="mt-1 text-xs text-ink-2">Camera and screen settings apply the next time you turn them on.</p>
           <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-ink">
             <input type="checkbox" className="accent-[var(--color-accent)]" checked={prefs.voiceIsolation} onChange={(e) => set({ voiceIsolation: e.target.checked })} />
             Voice isolation (kills room squeal)

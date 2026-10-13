@@ -4,7 +4,7 @@ import { AvatarCropper } from '../components/AvatarCropper'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
 import { usePrefs, type AVPrefs } from '../prefs'
-import { MIC_TIERS } from '../media/encodings'
+import { MIC_TIERS, CAM_PRESETS } from '../media/encodings'
 import { PALETTES } from '../lib/palettes'
 import {
   canInstall, disablePush, enablePush, isStandalone, onInstallChange, promptInstall, pushState,
@@ -508,6 +508,29 @@ function VoiceVideoSection() {
             </Select>
             <p className="mt-1 text-xs text-ink-2">{MIC_TIERS[prefs.micTier].hint} Changes apply even mid-call.</p>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Camera</Label>
+              <Select value={prefs.camPreset} onChange={(e) => set({ camPreset: e.target.value as AVPrefs['camPreset'] })}>
+                {(Object.keys(CAM_PRESETS) as AVPrefs['camPreset'][]).map((p) => (
+                  <option key={p} value={p}>
+                    {CAM_PRESETS[p].label} · up to {CAM_PRESETS[p].kbps} kbps
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label>Screen share</Label>
+              <Select value={prefs.screenHint} onChange={(e) => set({ screenHint: e.target.value as AVPrefs['screenHint'] })}>
+                <option value="detail">Sharp text (10 fps)</option>
+                <option value="motion">Smooth motion (30 fps)</option>
+              </Select>
+            </div>
+          </div>
+          <p className="text-xs text-ink-2">
+            You send several sizes at once; each viewer gets the best one their connection can take, or the one they pick on your tile.
+            Camera and screen settings apply the next time you turn them on.
+          </p>
           <Toggle
             checked={prefs.highPass}
             onChange={(v) => set({ highPass: v })}

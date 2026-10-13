@@ -7,8 +7,8 @@ import { create } from 'zustand'
 import { sendCommand } from './gateway'
 import { mixer } from './audio/mixer'
 import { createMicChain, type MicChain } from './audio/mic'
-import { usePrefs, type MicTier } from './prefs'
-import { MIC_TIERS, micConstraints, mungeOpusFmtp } from './media/encodings'
+import { usePrefs, isLowPower, type MicTier } from './prefs'
+import { MIC_TIERS, micConstraints, mungeOpusFmtp, camConstraints, camLadder, screenLadder, preferVP8 } from './media/encodings'
 
 export interface CallParticipant {
   user_id: string
@@ -43,6 +43,11 @@ interface CallState {
   ring: { channelId: string; fromUserId: string } | null
   // speaking: userId (or "me") -> currently talking, from the audio mixer.
   speaking: Record<string, boolean>
+  // layers: "userId|kind" -> the simulcast layer the server is sending us.
+  layers: Record<string, { rid: string; bps: number }>
+  // quality: "userId|kind" -> what we asked for ('auto' when unset).
+  quality: Record<string, StreamQuality>
+  focusKey: string | null
 
   join: (channelId: string) => Promise<void>
   leave: () => void
@@ -52,7 +57,14 @@ interface CallState {
   toggleScreen: () => Promise<void>
   setMinimized: (v: boolean) => void
   dismissRing: () => void
+  setStreamQuality: (key: string, q: StreamQuality) => void
+  setFocus: (key: string | null) => void
 }
+
+export type StreamQuality = 'auto' | 'q' | 'h' | 'f' | 'off'
+
+// Server upload caps (kbps), replaced by rtc.caps after joining.
+let caps = { cam: 2500, screen: 4000 }
 
 const ICE_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -248,6 +260,12 @@ export function handleCallEvent(t: string, d: any) {
     case 'rtc.offer': // subscriber offer from the server
       handleSubOffer(d)
       break
+    case 'rtc.caps':
+      if (d.channel_id === channelId) caps = { cam: d.cam_kbps || caps.cam, screen: d.screen_kbps || caps.screen }
+      break
+    case 'rtc.layers':
+      if (d.channel_id === channelId) useCall.setState({ layers: d.streams ?? {} })
+      break
     case 'rtc.ice': {
       const cand: RTCIceCandidateInit = d.candidate
       if (d.target === 'pub') {
@@ -331,6 +349,9 @@ export const useCall = create<CallState>((set, get) => ({
   localScreenStream: null,
   ring: null,
   speaking: {},
+  layers: {},
+  quality: {},
+  focusKey: null,
 
   join: async (chId) => {
     const st = get()
@@ -341,7 +362,7 @@ export const useCall = create<CallState>((set, get) => ({
     set({
       joinedChannelId: chId, connecting: true, connected: false,
       muted: false, deafened: false, cameraOn: false, sharing: false, minimized: false, mediaError: '',
-      remoteFeeds: [], speaking: {}, ring: st.ring?.channelId === chId ? null : st.ring,
+      remoteFeeds: [], speaking: {}, layers: {}, quality: {}, focusKey: null, ring: st.ring?.channelId === chId ? null : st.ring,
     })
     sendCommand('call.join', { channel_id: chId })
 
@@ -388,7 +409,7 @@ export const useCall = create<CallState>((set, get) => ({
     set({
       joinedChannelId: null, connecting: false, connected: false,
       muted: false, deafened: false, cameraOn: false, sharing: false, minimized: false,
-      remoteFeeds: [], localCamStream: null, localScreenStream: null, speaking: {},
+      remoteFeeds: [], localCamStream: null, localScreenStream: null, speaking: {}, layers: {}, quality: {}, focusKey: null,
     })
   },
 
@@ -440,13 +461,21 @@ export const useCall = create<CallState>((set, get) => ({
       return
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-      })
+      const prefs = usePrefs.getState()
+      const stream = await navigator.mediaDevices.getUserMedia({ video: camConstraints(prefs.camPreset) })
       const pc = ensurePubPC()
       watchConnection(pc)
       streamMeta[stream.id] = 'cam'
-      for (const track of stream.getTracks()) pc.addTrack(track, stream)
+      for (const track of stream.getTracks()) {
+        // Simulcast: several sizes of the same picture; the server picks a
+        // layer per viewer.
+        const tx = pc.addTransceiver(track, {
+          direction: 'sendonly',
+          streams: [stream],
+          sendEncodings: camLadder(prefs.camPreset, caps.cam, isLowPower()),
+        })
+        preferVP8(tx)
+      }
       set({ cameraOn: true, localCamStream: stream })
       pushState()
     } catch (err: any) {
@@ -480,13 +509,31 @@ export const useCall = create<CallState>((set, get) => ({
       const pc = ensurePubPC()
       watchConnection(pc)
       streamMeta[stream.id] = 'screen'
+      const hint = usePrefs.getState().screenHint
       for (const track of stream.getTracks()) {
-        pc.addTrack(track, stream)
         if (track.kind === 'video') {
+          // 'detail' keeps text sharp at a low frame rate; 'motion' favours
+          // smooth movement (games, video).
+          try {
+            track.contentHint = hint
+          } catch {
+            /* unsupported */
+          }
+          const tx = pc.addTransceiver(track, {
+            direction: 'sendonly',
+            streams: [stream],
+            sendEncodings: screenLadder(hint, caps.screen),
+          })
+          preferVP8(tx)
+          const params = tx.sender.getParameters()
+          ;(params as any).degradationPreference = hint === 'detail' ? 'maintain-resolution' : 'maintain-framerate'
+          tx.sender.setParameters(params).catch(() => {})
           track.onended = () => {
             // Browser "stop sharing" button.
             if (get().sharing) get().toggleScreen()
           }
+        } else {
+          pc.addTrack(track, stream)
         }
       }
       set({ sharing: true, localScreenStream: stream })
@@ -497,7 +544,38 @@ export const useCall = create<CallState>((set, get) => ({
   },
 
   dismissRing: () => set({ ring: null }),
+
+  setStreamQuality: (key, q) => set((s) => ({ quality: { ...s.quality, [key]: q } })),
+  setFocus: (key) => set({ focusKey: key }),
 }))
+
+// --- subscriber preferences -------------------------------------------------
+// Whenever what we are looking at changes, tell the server which layer we
+// want for each stream: the viewer's explicit pick, Auto otherwise; hidden
+// cameras (minimized view) are paused, the focused tile gets priority.
+let subscribeTimer: number | null = null
+function pushSubscribe() {
+  if (subscribeTimer !== null) return
+  subscribeTimer = window.setTimeout(() => {
+    subscribeTimer = null
+    const s = useCall.getState()
+    if (!s.joinedChannelId) return
+    const streams: Record<string, { quality: StreamQuality; priority: number }> = {}
+    for (const f of s.remoteFeeds) {
+      if (f.kind === 'mic') continue
+      let quality: StreamQuality = s.quality[f.key] ?? 'auto'
+      if (s.minimized && f.kind === 'cam' && quality !== 'off') quality = 'off'
+      const priority = s.focusKey === f.key ? 2 : s.minimized ? 0 : 1
+      streams[f.key] = { quality, priority }
+    }
+    sendCommand('rtc.subscribe', { channel_id: s.joinedChannelId, streams })
+  }, 300)
+}
+useCall.subscribe((s, prev) => {
+  if (s.remoteFeeds !== prev.remoteFeeds || s.minimized !== prev.minimized || s.focusKey !== prev.focusKey || s.quality !== prev.quality) {
+    pushSubscribe()
+  }
+})
 
 // The mixer reports who is talking; tiles light up from this.
 mixer.onSpeaking((speaking) => {

@@ -21,6 +21,10 @@ const (
 	EvtRTCOffer  = "rtc.offer"
 	EvtRTCAnswer = "rtc.answer"
 	EvtRTCIce    = "rtc.ice"
+	// EvtRTCLayers tells a viewer which simulcast layer each stream is on.
+	EvtRTCLayers = "rtc.layers"
+	// EvtRTCCaps hands a publisher the server's upload caps.
+	EvtRTCCaps = "rtc.caps"
 )
 
 // Publisher is the slice of the gateway hub the SFU needs (avoids an import cycle).
@@ -44,6 +48,19 @@ type Manager struct {
 	// hooks, when set, follow call membership (listening together lives
 	// inside calls).
 	hooks SessionHooks
+	// camKbps/screenKbps cap the top simulcast layer clients send.
+	camKbps, screenKbps int
+}
+
+// SetCaps sets the upload caps advertised to publishers (kbps).
+func (m *Manager) SetCaps(camKbps, screenKbps int) {
+	if camKbps <= 0 {
+		camKbps = 2500
+	}
+	if screenKbps <= 0 {
+		screenKbps = 4000
+	}
+	m.camKbps, m.screenKbps = camKbps, screenKbps
 }
 
 // SessionHooks is told about call membership changes. Implemented by the
@@ -190,6 +207,18 @@ func (m *Manager) HandleCommand(ctx context.Context, userID, t string, d json.Ra
 		if p := m.peerFor(userID, req.ChannelID); p != nil {
 			p.handleICE(req.Target, req.Candidate)
 		}
+
+	case "rtc.subscribe":
+		var req struct {
+			ChannelID string             `json:"channel_id"`
+			Streams   map[string]subPref `json:"streams"`
+		}
+		if json.Unmarshal(d, &req) != nil {
+			return
+		}
+		if p := m.peerFor(userID, req.ChannelID); p != nil {
+			p.handleSubscribe(req.Streams)
+		}
 	}
 }
 
@@ -284,7 +313,11 @@ func (m *Manager) Join(ctx context.Context, userID, channelID string) error {
 	r.mu.Lock()
 	r.syncLocked()
 	r.mu.Unlock()
-	r.keyframeAll()
+	cam, screen := m.camKbps, m.screenKbps
+	if cam <= 0 {
+		cam, screen = 2500, 4000
+	}
+	m.sendToUser(userID, EvtRTCCaps, map[string]any{"channel_id": channelID, "cam_kbps": cam, "screen_kbps": screen})
 	return nil
 }
 

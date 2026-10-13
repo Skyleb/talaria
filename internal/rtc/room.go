@@ -2,13 +2,10 @@ package rtc
 
 import (
 	"encoding/json"
-	"errors"
-	"io"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/skyleb/talaria/internal/model"
@@ -48,8 +45,16 @@ type Peer struct {
 
 	// streamMeta maps the client's uplink stream IDs to mic|cam|screen.
 	streamMeta map[string]string
-	published  map[string]*PublishedTrack   // by forwarded track UID
-	senders    map[string]*webrtc.RTPSender // forwarded track UID -> sender on sub PC
+	published  map[string]*PublishedTrack // uid -> every track this peer publishes
+	byKind     map[string]*PublishedTrack // "kind/video"|"kind/audio" -> track (groups simulcast layers)
+
+	// What this peer receives from others.
+	audioSenders map[string]*webrtc.RTPSender // uid -> sender for a shared audio track
+	downtracks   map[string]*downtrack        // uid -> per-subscriber video track
+	prefs        map[string]subPref           // "user|kind" -> viewer's quality preference
+	lastLayers   string                       // last rtc.layers payload sent (JSON)
+	rembBps      int
+	rembAt       time.Time
 
 	muted  bool
 	camera bool
@@ -57,14 +62,17 @@ type Peer struct {
 	closed bool
 }
 
-// PublishedTrack is one uplink track being forwarded to other peers.
-type PublishedTrack struct {
-	uid     string
-	owner   *Peer
-	kind    string
-	local   *webrtc.TrackLocalStaticRTP
-	remote  *webrtc.TrackRemote
-	isVideo bool
+// subPref is a viewer's wish for one stream: quality auto|q|h|f|off and a
+// priority (2 focused, 1 visible, 0 hidden).
+type subPref struct {
+	Quality  string `json:"quality"`
+	Priority int    `json:"priority"`
+}
+
+func (p *Peer) noteREMB(bps int) {
+	p.room.mu.Lock()
+	p.rembBps, p.rembAt = bps, time.Now()
+	p.room.mu.Unlock()
 }
 
 type participantState struct {
@@ -93,11 +101,14 @@ func (r *Room) broadcastState() {
 // join creates the peer and its PCs. Caller (manager) holds no room lock.
 func (r *Room) join(userID string) (*Peer, error) {
 	p := &Peer{
-		userID:     userID,
-		room:       r,
-		streamMeta: map[string]string{},
-		published:  map[string]*PublishedTrack{},
-		senders:    map[string]*webrtc.RTPSender{},
+		userID:       userID,
+		room:         r,
+		streamMeta:   map[string]string{},
+		published:    map[string]*PublishedTrack{},
+		byKind:       map[string]*PublishedTrack{},
+		audioSenders: map[string]*webrtc.RTPSender{},
+		downtracks:   map[string]*downtrack{},
+		prefs:        map[string]subPref{},
 	}
 
 	pub, err := r.mgr.api.NewPeerConnection(webrtc.Configuration{})
@@ -149,7 +160,9 @@ func (r *Room) join(userID string) (*Peer, error) {
 	return p, nil
 }
 
-// addPublished registers an uplink track and fans it out.
+// addPublished registers an uplink track (or one simulcast layer of one)
+// and fans it out. pion calls OnTrack once per rid, so the layers of a
+// camera arrive as separate tracks sharing the stream id.
 func (r *Room) addPublished(p *Peer, remote *webrtc.TrackRemote) {
 	kind := p.streamMeta[remote.StreamID()]
 	if kind == "" {
@@ -159,45 +172,57 @@ func (r *Room) addPublished(p *Peer, remote *webrtc.TrackRemote) {
 			kind = kindCam
 		}
 	}
-	uid := store.NewID()
-	// Downlink stream ID encodes owner and kind: the client parses "user|kind".
-	local, err := webrtc.NewTrackLocalStaticRTP(remote.Codec().RTPCodecCapability, uid, p.userID+"|"+kind)
-	if err != nil {
-		r.mgr.log.Error("create local track", "err", err)
-		return
+	isVideo := remote.Kind() == webrtc.RTPCodecTypeVideo
+	gk := kind + "/audio"
+	if isVideo {
+		gk = kind + "/video"
 	}
-	pt := &PublishedTrack{
-		uid: uid, owner: p, kind: kind, local: local, remote: remote,
-		isVideo: remote.Kind() == webrtc.RTPCodecTypeVideo,
-	}
+
 	r.mu.Lock()
 	if p.closed {
 		r.mu.Unlock()
 		return
 	}
-	p.published[uid] = pt
-	r.syncLocked()
-	r.mu.Unlock()
-	r.keyframeAll()
-
-	// Forward RTP until the uplink ends.
-	go func() {
-		buf := make([]byte, 1500)
-		for {
-			n, _, err := remote.Read(buf)
-			if err != nil {
-				break
-			}
-			if _, err := local.Write(buf[:n]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				// No subscribers yet or transient write issue: keep forwarding.
-				continue
-			}
+	pt := p.byKind[gk]
+	if pt == nil || !isVideo {
+		npt, err := newPublishedTrack(store.NewID(), p, kind, remote)
+		if err != nil {
+			r.mu.Unlock()
+			r.mgr.log.Error("create published track", "err", err)
+			return
 		}
+		pt = npt
+		p.published[pt.uid] = pt
+		p.byKind[gk] = pt
+		r.syncLocked()
+	}
+	r.mu.Unlock()
+
+	// end forgets the track once its uplink is gone (the pointer checks guard
+	// against a replacement that arrived in the meantime).
+	end := func() {
 		r.mu.Lock()
-		delete(p.published, uid)
+		if p.published[pt.uid] == pt {
+			delete(p.published, pt.uid)
+		}
+		if p.byKind[gk] == pt {
+			delete(p.byKind, gk)
+		}
 		r.syncLocked()
 		r.mu.Unlock()
-	}()
+	}
+	if !isVideo {
+		go pt.runAudio(remote, end)
+		return
+	}
+	l := pt.addLayer(remote)
+	go pt.runVideoLayer(l, r.allocateAll, func() {
+		if pt.removeLayer(l) {
+			end()
+		} else {
+			r.allocateAll()
+		}
+	})
 }
 
 // syncLocked reconciles every peer's sub PC with the set of published tracks
@@ -220,33 +245,146 @@ func (r *Room) syncLocked() {
 			}
 		}
 		changed := false
-		for uid, sender := range p.senders {
+		for uid, sender := range p.audioSenders {
 			if _, ok := desired[uid]; !ok {
 				if err := p.sub.RemoveTrack(sender); err == nil {
 					changed = true
 				}
-				delete(p.senders, uid)
+				delete(p.audioSenders, uid)
+			}
+		}
+		for uid, dt := range p.downtracks {
+			if _, ok := desired[uid]; !ok {
+				if err := p.sub.RemoveTrack(dt.sender); err == nil {
+					changed = true
+				}
+				dt.pt.removeSub(dt)
+				delete(p.downtracks, uid)
 			}
 		}
 		for uid, pt := range desired {
-			if _, ok := p.senders[uid]; ok {
+			if pt.isVideo {
+				if _, ok := p.downtracks[uid]; ok {
+					continue
+				}
+				dt, err := newDowntrack(pt, p)
+				if err != nil {
+					r.mgr.log.Error("create downtrack", "err", err)
+					continue
+				}
+				sender, err := p.sub.AddTrack(dt.local)
+				if err != nil {
+					r.mgr.log.Error("add video track to subscriber", "err", err)
+					continue
+				}
+				dt.sender = sender
+				pt.addSub(dt)
+				p.downtracks[uid] = dt
+				changed = true
+				go dt.drainRTCP()
+				continue
+			}
+			if _, ok := p.audioSenders[uid]; ok {
 				continue
 			}
 			sender, err := p.sub.AddTrack(pt.local)
 			if err != nil {
-				r.mgr.log.Error("add track to subscriber", "err", err)
+				r.mgr.log.Error("add audio track to subscriber", "err", err)
 				continue
 			}
-			p.senders[uid] = sender
+			p.audioSenders[uid] = sender
 			changed = true
-			// Drain subscriber RTCP (required so interceptors run); forward
-			// PLI from the viewer straight to the publisher for fast keyframes.
-			go r.drainSenderRTCP(pt, sender)
+			go drainAudioRTCP(sender)
 		}
 		if changed || p.subDirty {
 			r.offerSubLocked(p)
 		}
+		r.allocateLocked(p)
 	}
+}
+
+// drainAudioRTCP reads (and ignores) subscriber feedback for a shared audio
+// track; reading is required so the interceptors keep running.
+func drainAudioRTCP(sender *webrtc.RTPSender) {
+	for {
+		if _, _, err := sender.ReadRTCP(); err != nil {
+			return
+		}
+	}
+}
+
+// allocateLocked picks the layer each of p's downtracks should carry. Phase
+// 5 adds the bandwidth budget; for now a viewer's choice wins and Auto means
+// the best layer that is actually flowing. Must hold r.mu.
+func (r *Room) allocateLocked(p *Peer) {
+	now := time.Now()
+	for _, dt := range p.downtracks {
+		pref := p.prefs[dt.pt.owner.userID+"|"+dt.pt.kind]
+		dt.setTarget(chooseLayer(dt.pt.activeLayers(now), pref.Quality))
+	}
+}
+
+func (r *Room) allocateAll() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.peers {
+		if !p.closed {
+			r.allocateLocked(p)
+		}
+	}
+}
+
+// chooseLayer maps a quality preference onto the layers currently flowing
+// (smallest first): a fixed choice falls back to the nearest smaller layer
+// that is active, Auto takes the largest, off pauses.
+func chooseLayer(layers []layerInfo, quality string) string {
+	if len(layers) == 0 {
+		return ""
+	}
+	switch quality {
+	case "off":
+		return ""
+	case "", "auto":
+		return layers[len(layers)-1].RID
+	}
+	want := layerRank(quality)
+	best := layers[0].RID
+	for _, l := range layers {
+		if layerRank(l.RID) <= want {
+			best = l.RID
+		}
+	}
+	return best
+}
+
+// handleSubscribe stores a viewer's per-stream preferences and re-allocates.
+func (p *Peer) handleSubscribe(streams map[string]subPref) {
+	r := p.room
+	r.mu.Lock()
+	p.prefs = streams
+	if p.prefs == nil {
+		p.prefs = map[string]subPref{}
+	}
+	r.allocateLocked(p)
+	r.publishLayersLocked(p)
+	r.mu.Unlock()
+}
+
+// publishLayersLocked tells the viewer which layer each stream is on, when
+// that changed. Must hold r.mu.
+func (r *Room) publishLayersLocked(p *Peer) {
+	now := time.Now()
+	streams := map[string]layerInfo{}
+	for _, dt := range p.downtracks {
+		rid := dt.currentLayer()
+		streams[dt.pt.owner.userID+"|"+dt.pt.kind] = layerInfo{RID: rid, Bps: dt.pt.layerBps(rid, now)}
+	}
+	raw, _ := json.Marshal(streams)
+	if string(raw) == p.lastLayers {
+		return
+	}
+	p.lastLayers = string(raw)
+	r.mgr.sendToUser(p.userID, EvtRTCLayers, map[string]any{"channel_id": r.channel.ID, "streams": streams})
 }
 
 // offerSubLocked (re)offers the peer's subscriber PC. Must hold r.mu.
@@ -270,54 +408,23 @@ func (r *Room) offerSubLocked(p *Peer) {
 	})
 }
 
-func (r *Room) drainSenderRTCP(pt *PublishedTrack, sender *webrtc.RTPSender) {
-	for {
-		pkts, _, err := sender.ReadRTCP()
-		if err != nil {
-			return
-		}
-		if !pt.isVideo {
-			continue
-		}
-		for _, pkt := range pkts {
-			if _, ok := pkt.(*rtcp.PictureLossIndication); ok {
-				pt.owner.pub.WriteRTCP([]rtcp.Packet{
-					&rtcp.PictureLossIndication{MediaSSRC: uint32(pt.remote.SSRC())},
-				})
-				break
-			}
-		}
-	}
-}
-
-// keyframeAll asks every publisher for a keyframe (joins/changes).
-func (r *Room) keyframeAll() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, p := range r.peers {
-		for _, pt := range p.published {
-			if pt.isVideo {
-				p.pub.WriteRTCP([]rtcp.Packet{
-					&rtcp.PictureLossIndication{MediaSSRC: uint32(pt.remote.SSRC())},
-				})
-			}
-		}
-	}
-}
-
-// runTicker periodically requests keyframes and retries dirty renegotiations —
-// a safety net against lost signaling races.
+// runTicker is the safety net: it retries dirty renegotiations, re-picks
+// layers as they appear and disappear, and reports layer changes.
 func (r *Room) runTicker() {
-	t := time.NewTicker(3 * time.Second)
+	t := time.NewTicker(time.Second)
 	defer t.Stop()
 	for {
 		select {
 		case <-r.stopTick:
 			return
 		case <-t.C:
-			r.keyframeAll()
 			r.mu.Lock()
 			r.syncLocked()
+			for _, p := range r.peers {
+				if !p.closed {
+					r.publishLayersLocked(p)
+				}
+			}
 			r.mu.Unlock()
 		}
 	}
@@ -333,6 +440,9 @@ func (r *Room) removePeer(userID string) bool {
 	}
 	p.closed = true
 	delete(r.peers, userID)
+	for _, dt := range p.downtracks {
+		dt.pt.removeSub(dt)
+	}
 	empty := len(r.peers) == 0
 	r.syncLocked()
 	r.mu.Unlock()
@@ -389,8 +499,7 @@ func (p *Peer) handleSubAnswer(sdp webrtc.SessionDescription) {
 	r.mu.Lock()
 	pending := p.subPending
 	p.subPending = nil
-	dirty := p.subDirty
-	if dirty {
+	if p.subDirty {
 		r.offerSubLocked(p)
 	}
 	r.mu.Unlock()

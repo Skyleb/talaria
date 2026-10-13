@@ -155,6 +155,7 @@ func run(stop <-chan struct{}) {
 	if err != nil {
 		log.Error("start webrtc sfu (voice/video disabled)", "err", err)
 	} else {
+		sfu.SetCaps(cfg.WebRTC.MaxCamKbps, cfg.WebRTC.MaxScreenKbps)
 		hub.SetCallHandler(sfu)
 	}
 
