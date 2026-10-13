@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import { Bell, BellOff, Hash, Headphones, LogOut, Pencil, Phone, UserPlus, Users } from 'lucide-react'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { Bell, BellOff, Hash, Headphones, LogOut, Pencil, Phone, Search, UserPlus, Users } from 'lucide-react'
 import { api } from '../lib/api'
 import { dmTitle, displayName, useApp } from '../store'
 import { useCall } from '../call'
@@ -20,7 +20,11 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
   const users = useApp((s) => s.users)
   const me = useApp((s) => s.me)
   const loadMessages = useApp((s) => s.loadMessages)
+  const jumpToMessage = useApp((s) => s.jumpToMessage)
+  const openSearch = useApp((s) => s.openSearch)
   const markRead = useApp((s) => s.markRead)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const jumpTo = searchParams.get('m')
   const latest = useApp((s) => s.latestIds[channelId])
   const [membersOpen, setMembersOpen] = useState(false)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
@@ -29,8 +33,15 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
 
   useEffect(() => {
     setReplyTo(null)
-    if (channelId) loadMessages(channelId).catch(() => {})
-  }, [channelId, loadMessages])
+    if (!channelId) return
+    if (jumpTo) {
+      // Arriving from search: land on the message, then drop the param.
+      jumpToMessage(channelId, jumpTo).catch(() => loadMessages(channelId).catch(() => {}))
+      setSearchParams({}, { replace: true })
+    } else {
+      loadMessages(channelId).catch(() => {})
+    }
+  }, [channelId, jumpTo, loadMessages, jumpToMessage, setSearchParams])
 
   // Mark read when viewing and new messages arrive while visible.
   useEffect(() => {
@@ -64,6 +75,13 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
           subtitle={channel.topic || undefined}
           right={
             <>
+              <button
+                className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
+                title="Search this chat"
+                onClick={() => openSearch({ scope: 'channel', id: channelId })}
+              >
+                <Search size={18} />
+              </button>
               <StartCallButton channelId={channelId} />
               <ListenButton channelId={channelId} />
               <MuteButton channelId={channelId} />

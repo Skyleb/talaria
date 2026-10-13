@@ -199,7 +199,7 @@ function ActivePanel({ channelId }: { channelId: string }) {
               )}
               <div className="ml-auto flex items-center gap-1">
                 <Ctl
-                  title={audioOnly ? 'Show video' : 'Audio only (uses less data)'}
+                  title={audioOnly ? 'Show video' : 'Audio only: uses much less data, sound quality is a bit lower'}
                   onClick={() => setAudioOnly(!audioOnly)}
                   active={audioOnly}
                 >

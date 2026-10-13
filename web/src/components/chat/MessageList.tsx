@@ -28,8 +28,14 @@ export function MessageList({
   const hasMore = useApp((s) => s.hasMore[channelId])
   const loaded = useApp((s) => s.loaded[channelId])
   const loadMessages = useApp((s) => s.loadMessages)
+  const hasMoreAfter = useApp((s) => !!s.hasMoreAfter[channelId])
+  const highlightId = useApp((s) => s.highlightMessageId)
+  const loadNewer = useApp((s) => s.loadNewer)
+  const resetChannel = useApp((s) => s.resetChannel)
+  const clearHighlight = useApp((s) => s.clearHighlight)
   const containerRef = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [loadingNewer, setLoadingNewer] = useState(false)
   const pinnedToBottom = useRef(true)
   const prevHeight = useRef(0)
   const prevChannel = useRef('')
@@ -38,7 +44,13 @@ export function MessageList({
   function onScroll() {
     const el = containerRef.current
     if (!el) return
-    pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    pinnedToBottom.current = !hasMoreAfter && el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    if (hasMoreAfter && !loadingNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
+      setLoadingNewer(true)
+      loadNewer(channelId)
+        .catch(() => {})
+        .finally(() => setLoadingNewer(false))
+    }
     if (el.scrollTop < 200 && hasMore && !loadingMore && messages?.length) {
       setLoadingMore(true)
       prevHeight.current = el.scrollHeight
@@ -54,8 +66,8 @@ export function MessageList({
     if (!el) return
     if (prevChannel.current !== channelId) {
       prevChannel.current = channelId
-      el.scrollTop = el.scrollHeight
-      pinnedToBottom.current = true
+      if (!hasMoreAfter) el.scrollTop = el.scrollHeight
+      pinnedToBottom.current = !hasMoreAfter
       return
     }
     if (loadingMore && prevHeight.current) {
@@ -65,6 +77,17 @@ export function MessageList({
       el.scrollTop = el.scrollHeight
     }
   }, [messages, channelId, loadingMore])
+
+  // Scroll a jumped-to message into view and flash it briefly.
+  useEffect(() => {
+    if (!highlightId) return
+    const target = containerRef.current?.querySelector(`[data-mid="${CSS.escape(highlightId)}"]`)
+    if (!target) return
+    pinnedToBottom.current = false
+    target.scrollIntoView({ block: 'center' })
+    const t = setTimeout(clearHighlight, 2500)
+    return () => clearTimeout(t)
+  }, [highlightId, messages, clearHighlight])
 
   if (!loaded && !messages) {
     return (
@@ -101,10 +124,25 @@ export function MessageList({
                 <div className="h-px flex-1 bg-edge" />
               </div>
             )}
-            <MessageItem message={m} grouped={!newDay && isGrouped(prev, m)} onReply={onReply} />
+            <MessageItem message={m} grouped={!newDay && isGrouped(prev, m)} onReply={onReply} highlighted={m.id === highlightId} />
           </div>
         )
       })}
+      {loadingNewer && (
+        <div className="flex justify-center py-2">
+          <Spinner className="h-4 w-4" />
+        </div>
+      )}
+      {hasMoreAfter && (
+        <div className="sticky bottom-1 flex justify-center">
+          <button
+            onClick={() => resetChannel(channelId)}
+            className="rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-text shadow hover:bg-accent-hover"
+          >
+            Jump to latest ↓
+          </button>
+        </div>
+      )}
     </div>
   )
 }

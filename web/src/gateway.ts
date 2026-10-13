@@ -196,6 +196,9 @@ function handleEvent(t: string, d: any) {
         const latestIds = { ...s.latestIds, [m.channel_id]: m.id }
         const list = s.messages[m.channel_id]
         if (!list) return { users, latestIds } // channel not loaded; unread badge only
+        // Viewing an older window (after a jump): leave the gap until the
+        // user scrolls down or jumps to latest, so nothing is skipped.
+        if (s.hasMoreAfter[m.channel_id]) return { users, latestIds }
         if (list.some((x) => x.id === m.id)) return { users, latestIds }
         const next = m.nonce
           ? list.filter((x) => !(x.pending && x.nonce === m.nonce))

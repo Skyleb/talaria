@@ -177,6 +177,11 @@ export interface ListenState {
   server_now: number
 }
 
+export interface SearchHit {
+  message: Message
+  snippet: string
+}
+
 export interface SessionInfo {
   id: string
   created_at: number

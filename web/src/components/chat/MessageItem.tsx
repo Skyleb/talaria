@@ -13,10 +13,12 @@ export function MessageItem({
   message: m,
   grouped,
   onReply,
+  highlighted,
 }: {
   message: Message
   grouped: boolean
   onReply: (m: Message) => void
+  highlighted?: boolean
 }) {
   const me = useApp((s) => s.me)
   const users = useApp((s) => s.users)
@@ -53,7 +55,7 @@ export function MessageItem({
   // System lines ("X added Y") render as a quiet divider, not a bubble.
   if (m.kind === 'system') {
     return (
-      <p className="mt-2 px-2 text-center text-xs italic text-ink-2" title={formatDateTime(m.created_at)}>
+      <p className="mt-2 px-2 text-center text-xs italic text-ink-2" title={formatDateTime(m.created_at)} data-mid={m.id}>
         {m.content}
       </p>
     )
@@ -67,7 +69,9 @@ export function MessageItem({
         m.pending && 'opacity-60',
         m.failed && 'opacity-60 outline outline-1 outline-danger',
         mentionsMe && 'border-l-2 border-accent bg-accent/10 hover:bg-accent/15',
+        highlighted && 'bg-accent/20 ring-2 ring-accent/60 transition-colors duration-700',
       )}
+      data-mid={m.id}
       onTouchStart={() => {}}
       onContextMenu={(e) => {
         e.preventDefault()

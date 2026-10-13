@@ -30,7 +30,12 @@ interface AppState {
 
   messages: Record<string, Message[]>
   hasMore: Record<string, boolean>
+  // hasMoreAfter is set while viewing an older window (after a jump); newer
+  // messages are not appended until the user loads them or jumps to latest.
+  hasMoreAfter: Record<string, boolean>
   loaded: Record<string, boolean>
+  highlightMessageId: string | null
+  searchOpen: { scope: 'channel' | 'group' | 'all'; id?: string } | null
 
   theme: Theme
   palette: string
@@ -51,6 +56,12 @@ interface AppState {
   applyReady: (p: ReadyPayload) => void
   applyGroupCreate: (p: GroupSummary) => void
   loadMessages: (channelId: string, before?: string) => Promise<void>
+  loadNewer: (channelId: string) => Promise<void>
+  jumpToMessage: (channelId: string, messageId: string) => Promise<void>
+  resetChannel: (channelId: string) => Promise<void>
+  clearHighlight: () => void
+  openSearch: (opts: { scope: 'channel' | 'group' | 'all'; id?: string }) => void
+  closeSearch: () => void
   sendMessage: (channelId: string, content: string, attachmentIds: string[], replyToId?: string) => Promise<void>
   markRead: (channelId: string) => void
   pruneTyping: () => void
@@ -86,7 +97,10 @@ export const useApp = create<AppState>((set, get) => ({
 
   messages: {},
   hasMore: {},
+  hasMoreAfter: {},
   loaded: {},
+  highlightMessageId: null,
+  searchOpen: null,
 
   theme: (localStorage.getItem('talaria-theme') as Theme) || 'system',
   palette: localStorage.getItem('talaria-palette') || DEFAULT_PALETTE,
@@ -208,6 +222,64 @@ export const useApp = create<AppState>((set, get) => ({
       }
     })
   },
+
+  loadNewer: async (channelId) => {
+    const list = get().messages[channelId]
+    if (!list?.length) return
+    const last = list[list.length - 1].id
+    const res = await api.get<{ messages: Message[]; has_more_after: boolean }>(
+      `/api/v1/channels/${channelId}/messages?after=${encodeURIComponent(last)}`,
+    )
+    const incoming = [...(res.messages ?? [])].reverse()
+    set((s) => {
+      const existing = s.messages[channelId] ?? []
+      const seen = new Set(existing.map((m) => m.id))
+      const users = { ...s.users }
+      for (const m of incoming) if (m.author) users[m.author.id] = m.author
+      return {
+        messages: { ...s.messages, [channelId]: [...existing, ...incoming.filter((m) => !seen.has(m.id))] },
+        hasMoreAfter: { ...s.hasMoreAfter, [channelId]: res.has_more_after },
+        users,
+      }
+    })
+  },
+
+  jumpToMessage: async (channelId, messageId) => {
+    if ((get().messages[channelId] ?? []).some((m) => m.id === messageId)) {
+      set({ highlightMessageId: messageId })
+      return
+    }
+    const res = await api.get<{ messages: Message[]; has_more: boolean; has_more_after: boolean }>(
+      `/api/v1/channels/${channelId}/messages?around=${encodeURIComponent(messageId)}`,
+    )
+    const incoming = [...(res.messages ?? [])].reverse()
+    set((s) => {
+      const users = { ...s.users }
+      for (const m of incoming) if (m.author) users[m.author.id] = m.author
+      return {
+        messages: { ...s.messages, [channelId]: incoming },
+        hasMore: { ...s.hasMore, [channelId]: res.has_more },
+        hasMoreAfter: { ...s.hasMoreAfter, [channelId]: res.has_more_after },
+        loaded: { ...s.loaded, [channelId]: true },
+        users,
+        highlightMessageId: messageId,
+      }
+    })
+  },
+
+  resetChannel: async (channelId) => {
+    set((s) => {
+      const { [channelId]: _m, ...messages } = s.messages
+      const { [channelId]: _l, ...loaded } = s.loaded
+      const { [channelId]: _a, ...hasMoreAfter } = s.hasMoreAfter
+      return { messages, loaded, hasMoreAfter, highlightMessageId: null }
+    })
+    await get().loadMessages(channelId)
+  },
+
+  clearHighlight: () => set({ highlightMessageId: null }),
+  openSearch: (opts) => set({ searchOpen: opts }),
+  closeSearch: () => set({ searchOpen: null }),
 
   sendMessage: async (channelId, content, attachmentIds, replyToId) => {
     const st = get()

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { BellOff, Hash, Menu, Moon, Phone, PhoneOff, Plus, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
+import { BellOff, Hash, Menu, Moon, Phone, PhoneOff, Plus, Search, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
 import { setAppBadge, syncPush } from '../lib/notifications'
 import { dmOther, dmTitle, displayName, useApp } from '../store'
@@ -12,6 +12,7 @@ import { GlobalListen } from '../components/listen/GlobalListen'
 import { InstallPrompt } from '../components/InstallPrompt'
 import { AvatarCropper } from '../components/AvatarCropper'
 import { UserProfileModal } from '../components/UserProfileModal'
+import { SearchModal } from '../components/SearchModal'
 import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
 import FriendsPage from './FriendsPage'
 import ChatPage from './ChatPage'
@@ -48,6 +49,18 @@ export default function AppShell() {
   // Re-attribute this device's push subscription to the signed-in account.
   useEffect(() => {
     syncPush()
+  }, [])
+
+  // Ctrl/Cmd+K searches everything.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        useApp.getState().openSearch({ scope: 'all' })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   return (
@@ -90,6 +103,7 @@ export default function AppShell() {
       <GlobalCall />
       <GlobalListen />
       <UserProfileModal />
+      <SearchModal />
       <InstallPrompt />
     </div>
   )
@@ -310,6 +324,13 @@ function GroupChannelList({ groupId }: { groupId: string }) {
     <>
       <div className="flex items-center justify-between gap-1 border-b border-edge px-4 py-3">
         <h2 className="min-w-0 flex-1 truncate font-semibold text-ink">{group.name}</h2>
+        <button
+          title="Search this group"
+          className="rounded-lg p-1 text-ink-1 hover:bg-bg-3 hover:text-ink"
+          onClick={() => useApp.getState().openSearch({ scope: 'group', id: groupId })}
+        >
+          <Search size={18} />
+        </button>
         <button
           title="Invite people"
           className="rounded-lg p-1 text-ink-1 hover:bg-bg-3 hover:text-ink"
@@ -580,8 +601,15 @@ function DMList() {
 
   return (
     <>
-      <div className="border-b border-edge px-4 py-3">
-        <h2 className="font-semibold text-ink">Talaria</h2>
+      <div className="flex items-center border-b border-edge px-4 py-3">
+        <h2 className="flex-1 font-semibold text-ink">Talaria</h2>
+        <button
+          title="Search everything (Ctrl+K)"
+          className="rounded-lg p-1 text-ink-1 hover:bg-bg-3 hover:text-ink"
+          onClick={() => useApp.getState().openSearch({ scope: 'all' })}
+        >
+          <Search size={18} />
+        </button>
       </div>
       <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
         <button

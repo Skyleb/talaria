@@ -40,9 +40,25 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	before := r.URL.Query().Get("before")
+	q := r.URL.Query()
 	limit := 50
-	msgs, err := s.Store.ListMessages(r.Context(), ch.ID, before, limit)
+	var (
+		msgs                  []*model.Message
+		err                   error
+		hasMore, hasMoreAfter bool
+	)
+	switch {
+	case q.Get("around") != "":
+		// A window centred on one message (jumping to a search result).
+		msgs, hasMore, hasMoreAfter, err = s.Store.ListMessagesAround(r.Context(), ch.ID, q.Get("around"), limit)
+		reverseMessages(msgs)
+	case q.Get("after") != "":
+		msgs, hasMoreAfter, err = s.Store.ListMessagesAfter(r.Context(), ch.ID, q.Get("after"), limit)
+		reverseMessages(msgs)
+	default:
+		msgs, err = s.Store.ListMessages(r.Context(), ch.ID, q.Get("before"), limit)
+		hasMore = len(msgs) == limit
+	}
 	if err != nil {
 		serverError(w, s.Log, err)
 		return
@@ -89,7 +105,7 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 			m.ReplyTo = &cp
 		}
 	}
-	writeJSON(w, 200, map[string]any{"messages": msgs, "has_more": len(msgs) == limit})
+	writeJSON(w, 200, map[string]any{"messages": msgs, "has_more": hasMore, "has_more_after": hasMoreAfter})
 }
 
 func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {

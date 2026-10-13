@@ -1,7 +1,7 @@
 // Small shared UI primitives, styled with the theme tokens.
 import {
   type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
+  type ComponentProps,
   type ReactNode,
   type SelectHTMLAttributes,
   useEffect,
@@ -28,7 +28,7 @@ export function Button({
   return <button className={cx(base, styles, className)} {...props} />
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return (
     <input
       className={cx(
