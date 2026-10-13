@@ -1,185 +1,216 @@
 # 🪽 Talaria
 
-A portable, self-hosted chat server for friends — one binary, no install.
-Think "Discord you run at home": async text chat, file sharing with inline
-media playback, friends and groups, a mobile-first web client — with voice,
-video, screen share, presence, and synchronized music/video listening on the
-roadmap below.
+**Your own private Discord, in one file.** Talaria is a self-hosted chat
+server for a group of friends: text channels and DMs, voice and video calls
+with screen share, listening to music and videos together, file sharing, and
+an installable phone app with notifications. It is a single executable with
+no installer, no database to set up and no accounts with anyone else. Put it
+on any Windows, macOS or Linux machine that stays on, and your friends connect
+from anywhere through their browser or the installed app.
+
+- **Chat** — channels and groups, DMs and group DMs, replies, emoji
+  reactions, @mentions, read states, typing, search, a media gallery of
+  everything shared, file and image sharing with inline playback, GIF search.
+- **Calls** — voice, video and screen share (with system/tab audio) through a
+  built-in media server. Per-person volume, automatic loudness levelling,
+  speaking indicators, noise suppression, and picture quality that adapts to
+  each viewer (or is picked per stream, up to 4K 60 fps).
+- **Listen together** — inside any call: a shared queue of YouTube videos and
+  uploaded songs that everyone hears at the same moment, with a host who
+  drives playback and music that ducks while people talk.
+- **Phone app** — installable web app for Android and iPhone with push
+  notifications for DMs, mentions and incoming calls.
+- **Private** — everything lives in one folder on your machine. HTTPS with
+  automatic Let's Encrypt certificates and built-in dynamic DNS for home
+  connections.
 
 ## Quick start
 
-1. Download (or build) `talaria.exe` (Windows) / `talaria-darwin-*` (macOS) /
-   `talaria-linux-*` (Linux).
-2. Double-click it (or run it in a terminal). Your browser opens the setup
-   wizard at `http://localhost:8080`.
-3. Create your admin account, then share an invite link with friends.
+1. **Download** the file for your system from the
+   [latest release](../../releases/latest):
 
-## Notifications and the installable app
+   | System | File |
+   |---|---|
+   | Windows | `talaria-windows-amd64.exe` |
+   | macOS (Apple silicon) | `talaria-darwin-arm64` |
+   | macOS (Intel) | `talaria-darwin-amd64` |
+   | Linux (x86-64) | `talaria-linux-amd64` |
+   | Linux (Raspberry Pi 4/5, ARM servers) | `talaria-linux-arm64` |
 
-Talaria is an installable web app: on Android and desktop Chrome/Edge use
-**Settings → Notifications → Install Talaria**, on iPhone/iPad use Share →
-**Add to Home Screen**. Then turn on notifications in the same Settings card
-to get a heads-up for direct messages, `@mentions`, and incoming calls even
-when the app is closed. Push is delivered straight from your server to the
-browser (Web Push with VAPID keys generated on first run); no third-party
-service is involved. Mute any chat with the bell icon in its header.
+2. **Put it in its own folder** (for example `Talaria`). The config file and
+   your data will be created next to it.
 
-Everything lives next to the binary: `talaria.toml` (config) and `data/`
-(database + uploaded files). Move the folder, and your server moves with it.
-All server settings are editable in the app under **Settings → Admin — server
-configuration**; the TOML file is just where they're stored, and hand-editing
-it remains supported.
+3. **Run it.**
+   - **Windows:** double-click the `.exe`. SmartScreen will say the publisher
+     is unknown because the build is not code-signed: click *More info*, then
+     *Run anyway*. (If Smart App Control is on, Windows blocks unsigned
+     programs entirely; turn it off under Windows Security → App & browser
+     control, or build from source.)
+   - **macOS:** open Terminal in the folder and run
+     `chmod +x talaria-darwin-arm64 && xattr -d com.apple.quarantine talaria-darwin-arm64 && ./talaria-darwin-arm64`
+     (the `xattr` step clears the "unidentified developer" block once).
+   - **Linux:** `chmod +x talaria-linux-amd64 && ./talaria-linux-amd64`
 
-## Remote access (DDNS)
+4. **Set up.** Your browser opens `http://localhost:8080/setup`. Pick a name
+   for your server and create your admin account. That is the whole install.
 
-Friends outside your network connect through a domain pointed at your home IP:
+5. **Invite friends.** Everything is in the app: *Settings → Admin* creates
+   invite links for the server; the *Invite people* button in a group makes a
+   link that also drops them into that group. Anyone who registers through
+   your link becomes your friend automatically.
 
-1. Get a free DDNS domain — [DuckDNS](https://www.duckdns.org) is recommended
-   (free, no expiry nags, Let's Encrypt-friendly).
-2. Forward **TCP 80 and 443** (and **UDP 50000** for calls) on your router to
-   the machine running Talaria (see `docs/port-forwarding.md`).
-3. In **Settings → Admin — server configuration**, set the HTTPS domain and
-   enable Dynamic DNS with your DuckDNS token — Talaria keeps the DDNS record
-   updated itself, no separate updater client needed. (Equivalent TOML:)
+Talaria keeps running while the window (or terminal) is open; close it to
+stop. See [Keep it running](#keep-it-running) to make it start with the
+machine.
 
-   ```toml
-   [tls]
-   mode = "auto"
-   domain = "yourname.duckdns.org"
+### What gets created
 
-   [ddns]
-   enabled = true
-   provider = "duckdns"
-   token = "your-duckdns-token"   # shown at the top of duckdns.org
-   ```
+```
+Talaria/
+  talaria-windows-amd64.exe   the program
+  talaria.toml                settings (also editable in the app)
+  data/                       database and uploaded files
+```
 
-4. Restart Talaria. It updates DuckDNS every 5 minutes, fetches a free
-   Let's Encrypt certificate automatically, and serves
-   `https://yourname.duckdns.org`. (DDNS changes apply immediately on save;
-   domain/port changes need the restart.)
+Back up by copying the folder. Move the folder and the server moves with it.
+**To update**, download the new release over the old file and start it again:
+the database upgrades itself.
 
-Other providers work via `provider = "custom"` with
-`url = "https://.../update?hostname={DOMAIN}&password={TOKEN}"`, or keep
-using your router's built-in DDNS client and skip the `[ddns]` section.
+## Let friends in from the internet
 
-### Using a domain you own (Porkbun)
+Out of the box Talaria is reachable on your own network (`http://<your LAN
+IP>:8080`, shown when it starts). For friends elsewhere you need a name that
+points at your home connection and three forwarded ports. Browsers also only
+allow microphones and cameras on HTTPS, so calls need this step too.
 
-Prefer a real domain such as `talaria.gg`? Buy it at [Porkbun](https://porkbun.com)
-(it sells `.gg` and most other TLDs, and DNS hosting is included), then:
+1. **Forward ports** on your router to the machine running Talaria:
+   **TCP 80**, **TCP 443**, and **UDP 50000** (calls). See
+   [`docs/port-forwarding.md`](docs/port-forwarding.md) for router and
+   firewall details. If your ISP uses CGNAT (your router's WAN address differs
+   from what "what is my IP" sites show) inbound connections cannot reach you;
+   ask the ISP for a public IP or use a tunnel such as Tailscale Funnel.
 
-1. Porkbun → Account → **API Access**: create an API key pair and give it the
-   **DNS** permission (keys without it are rejected with "does not have the
-   dns permission").
-2. On the domain's details page, turn on **API Access** for that domain.
-3. In Talaria, set the HTTPS domain to `talaria.gg`, choose the **Porkbun**
-   DDNS provider and paste the two keys. (Equivalent TOML:)
+2. **Get a name.** Either:
+   - **Free: DuckDNS.** Create a subdomain at [duckdns.org](https://www.duckdns.org)
+     and copy your token. In Talaria, *Settings → Admin*: set the HTTPS domain
+     to `yourname.duckdns.org`, enable *Dynamic DNS* with provider DuckDNS and
+     the token, save.
+   - **Your own domain via Porkbun.** Buy the domain at
+     [porkbun.com](https://porkbun.com) (DNS hosting included). In Porkbun:
+     *Account → API Access* → create an API key pair **with the DNS
+     permission**, and turn on *API Access* on the domain's page. In Talaria:
+     HTTPS domain = your domain, Dynamic DNS provider = Porkbun with both
+     keys, save. Talaria manages the DNS records itself. Leave the domain on
+     Porkbun's own nameservers (no proxy or CDN in front; calls need direct
+     UDP).
 
-   ```toml
-   [tls]
-   mode = "auto"
-   domain = "talaria.gg"
+3. **Restart Talaria.** It keeps the DNS record pointed at your connection,
+   fetches a Let's Encrypt certificate automatically, and serves
+   `https://your-name`. Give friends that address.
 
-   [ddns]
-   enabled = true
-   provider = "porkbun"
-   token = "pk1_…"    # API key
-   secret = "sk1_…"   # secret API key
-   ```
+Equivalent `talaria.toml` for the DuckDNS case:
 
-Talaria creates or updates the A record itself and, if Home network access
-is on, a `lan.talaria.gg`-style subdomain plus the `_acme-challenge` TXT
-records for its certificate. Leave the domain on Porkbun's own nameservers
-(no proxy or CDN in front — calls need direct UDP).
+```toml
+[tls]
+mode = "auto"
+domain = "yourname.duckdns.org"
 
-**Already running on DuckDNS?** Switch in two saves, because the moment the
-HTTPS domain changes the old name stops being served:
+[ddns]
+enabled = true
+provider = "duckdns"
+token = "your-duckdns-token"
+```
 
-1. Keep the HTTPS domain as it is. Under Dynamic DNS choose Porkbun, paste
-   the keys, and put the new domain (e.g. `talaria.gg`) in the *DDNS domain*
-   field. Save — Talaria replaces Porkbun's parking records with your IP.
-2. After a minute, change the HTTPS domain (and the home-access domain) to
-   the new names, save, and restart. Talaria refuses the switch while the new
-   name still points somewhere else.
+**Already running on one name and switching to another?** Change the
+Dynamic DNS domain first and save, wait a minute for the record to update,
+then change the HTTPS domain and restart. Talaria refuses to switch to a
+name that does not yet point at your server, so you cannot lock yourself out.
 
-No domain? `mode = "selfsigned"` serves HTTPS on your LAN with a self-signed
-certificate (browsers warn once). Plain HTTP stays available on `:8080` for
-localhost.
+**Blank page from your own Wi-Fi while remote friends are fine?** Your router
+cannot reach its own public address from inside (NAT loopback). Turn on *Home
+network access* in Settings → Admin with a second name (another free DuckDNS
+subdomain, or `lan.yourdomain` on Porkbun); Talaria points it at the
+machine's LAN address with its own certificate and redirects home devices to
+it. Many routers do support loopback, in which case leave this off.
 
-> **Domain not working from your own WiFi?** Many home routers can't reach
-> their own public IP from inside the network (broken NAT loopback), which
-> shows up as a blank page on LAN devices while everything works remotely.
-> Enable **Home network access** in Settings → Admin — server configuration:
-> give it a second domain (a free DuckDNS subdomain such as `yourname-lan`, or
-> any subdomain of your own Porkbun domain such as `lan.talaria.gg`) and Talaria
-> keeps it pointed at the server's LAN IP, fetches its own Let's Encrypt
-> certificate (DNS-01), and transparently 302-redirects hairpinned page loads
-> to it. No router or per-device changes. (A `[lan_dns]` DNS-server mode also
-> exists in the TOML for setups that prefer pointing the router's DHCP DNS at
-> the Talaria machine.)
+**No domain at all?** `[tls] mode = "selfsigned"` serves HTTPS on your LAN
+with a self-signed certificate (browsers warn once) so calls work at home.
 
-> **CGNAT warning:** if your router's WAN IP differs from the IP shown by
-> "what is my IP" sites, your ISP uses CGNAT and inbound connections cannot
-> reach you; ask your ISP for a public IP or use a tunnel (Tailscale Funnel,
-> Cloudflare Tunnel).
+## Keep it running
 
-## Listen together
+- **Windows:** from an Administrator PowerShell in the folder:
+  `.\talaria-windows-amd64.exe -service install` then
+  `.\talaria-windows-amd64.exe -service start`. Talaria now starts with
+  Windows and restarts itself if it crashes (`-service stop` / `-service
+  uninstall` undo it). [`deploy/install.ps1`](deploy/install.ps1) does the
+  same plus the firewall rule.
+- **Linux (systemd):** [`deploy/install.sh`](deploy/install.sh) creates a
+  `talaria` user, `/opt/talaria`, and an auto-restarting service. See
+  [`docs/deploy.md`](docs/deploy.md).
+- **macOS:** run it in a terminal that stays open, or wrap it in a `launchd`
+  agent.
 
-Any chat, DM, or group channel can host a shared listening session: tap the
-headphones icon in the header, search YouTube right in the app (or paste a
-link), upload songs and videos, and everyone who joins hears the same moment.
-Search needs no API key; an optional YouTube Data API key can be set in the
-admin settings if you prefer the official API. The server keeps the
-clock, so late joiners land in sync; the host drives play/pause/seek/skip
-and anyone can add to the queue. Save a queue as a named playlist to start
-it again later. A member's profile card shows what they are listening to,
-with a one-tap "Listen along". (Spotify and Apple Music providers are the
-next step; they need developer-app registration on your side.)
+## Calls and listening together
+
+Calls use one UDP port (50000) for everyone; the media server is inside the
+same binary. Each person sends several picture sizes at once and every viewer
+gets the best one their connection can carry, or whatever they pick on a
+tile: Auto, high, medium, low. Microphone tiers (voice, balanced, music),
+camera presets up to 4K 60 fps, screen-share presets (sharp text or smooth
+motion), noise suppression and music ducking are under *Settings → Voice &
+video* and in the quality button during a call. Click a person's name on
+their tile to set how loud they are for you.
+
+Listening together lives inside calls: the headphones button in a chat
+starts or joins the voice call and opens the shared queue. Search YouTube in
+the app or paste a link, upload songs and videos, save a queue as a
+playlist. Everyone in the call is in the session; leaving the call leaves it.
+
+## Settings and data
+
+Every server setting is in the app under **Settings → Admin**: server name,
+ports, HTTPS and dynamic DNS, home-network access, upload limits, call
+bandwidth caps, YouTube and GIPHY API keys (optional; search works without
+them), and users and invites. The same values live in `talaria.toml` next to
+the binary and can be hand-edited while the server is stopped.
+
+What is encrypted: all traffic (HTTPS, and DTLS-SRTP for calls), passwords
+(Argon2id) and session tokens. What is not: the database and uploaded files
+on disk, and messages are readable by whoever runs the server. Use full-disk
+encryption on the machine if that matters to you.
+
+## Troubleshooting
+
+- **"Port 8080 already in use"** — change `http_port` in `talaria.toml` and
+  restart; the setup page is then `http://localhost:<port>/setup`.
+- **Setup page did not open** — go to `http://localhost:8080/setup` yourself.
+- **Mic or camera unavailable** — browsers only allow them on HTTPS (or
+  `localhost`). Set up a domain, or `mode = "selfsigned"` for the LAN.
+- **Friends cannot connect / calls fail remotely** — check the three port
+  forwards, that the domain resolves to your current public IP, and CGNAT.
+- **Forgot the admin password** — stop Talaria and, from a source checkout,
+  run `go run ./scripts/pwreset data/talaria.db <username> <new-password>`
+  (point it at your real data folder), then start Talaria again.
+- Logs print to the terminal; on Linux as a service, `journalctl -u talaria`.
 
 ## Development
 
-Prereqs: Go 1.24+, Node 20+.
+Prerequisites: Go 1.26+ and Node 20+. Everything is pure Go (SQLite via
+modernc), so cross-compiling needs no C toolchains.
 
 ```powershell
-# API server (:8080) + hot-reloading client (:5173)
-pwsh scripts/dev.ps1          # or: task dev
-
-# Production build for this machine
-cd web && npm run build && cd ..
-go build -o dist/talaria.exe ./cmd/talaria    # or: task build
-
-# Cross-compile all platforms (pure Go — no C toolchains needed)
-pwsh scripts/build.ps1        # or: task build:all
-
-# Tests
-go test ./...
+pwsh scripts/dev.ps1           # API server (:8080) + hot-reloading client (:5173); or: task dev
+cd web && npm run build && cd ..          # build the web client into the binary's embed dir
+go build -o dist/talaria.exe ./cmd/talaria  # or: task build
+pwsh scripts/build.ps1         # cross-compile every platform; or: task build:all
+go test ./... && (cd web && npm run lint)
 ```
 
-Architecture notes live in `docs/architecture.md`; the realtime protocol is
-documented in `docs/protocol.md`.
+Pushing a tag like `v0.2.0` makes CI publish a GitHub Release with binaries
+for every platform and a `SHA256SUMS.txt`. Architecture notes are in
+[`docs/architecture.md`](docs/architecture.md) and the realtime protocol in
+[`docs/protocol.md`](docs/protocol.md).
 
-## Roadmap
+## License
 
-- **Phase 1 (done)** — accounts, friends, groups, invites, realtime text chat,
-  replies, typing, read states, file uploads with inline image/video/audio
-  playback, profiles/avatars, light+dark mobile-first UI, auto-HTTPS for DDNS.
-- **Daily-driver pass (done)** — installable PWA, Web Push notifications for
-  DMs/@mentions/calls, @mention autocomplete and highlighting, per-chat mute,
-  unread count in the tab title and app badge, group DMs, profile cards.
-- **Phase 2 (done)** — voice & video calls + screen share through a WebRTC SFU
-  embedded in the same binary (Pion). Every participant uploads once; all call
-  media shares **one UDP port (50000)** — forward it on your router for remote
-  callers. Calls work in any group channel or DM (DMs ring the other side).
-  Note: browsers require HTTPS (or localhost) to use mic/camera — LAN users
-  over plain HTTP join listen-only, so enable self-signed TLS or DDNS for
-  full calls. Planned refinements: direct P2P transport for 1:1 calls,
-  simulcast, embedded TURN.
-- **Phase 4, slice 1 (done)** — Listen together: synchronized YouTube +
-  upload playback per channel with a server-authoritative clock, shared
-  queue, host controls, saved playlists, and listening presence.
-- **Phase 3** — presence: Currently Playing (optional tiny desktop helper) and
-  Currently Listening.
-- **Phase 4** — synchronized listening/watching: group playlists mixing
-  YouTube, Spotify, Apple Music, and uploaded media; the host controls
-  playback, everyone hears the same moment on their own service; join a
-  friend's session from their presence; archive and name group playlists.
-  (The schema and realtime protocol for this are already in place.)
+MIT — see [LICENSE](LICENSE).

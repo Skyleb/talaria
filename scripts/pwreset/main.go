@@ -1,4 +1,5 @@
-// Resets a user's password in a COPY of the database (debug sandbox only).
+// Resets a user's password: pwreset <path/to/talaria.db> <username> <new-password>.
+// Stop the server first (SQLite is single-writer); works on a copy too.
 package main
 
 import (
