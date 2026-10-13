@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Moon, Monitor, Sun } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
-import { useApp, type Theme } from '../store'
+import { useApp } from '../store'
+import { PALETTES } from '../lib/palettes'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
-import { Button, cx, ErrorText, Input, Label, Select } from '../components/ui'
+import { Button, cx, ErrorText, Input, Label, Segmented, Select } from '../components/ui'
 import { PageHeader } from './AppShell'
 import type { Invite, LanAccessStatus, ServerConfig, SessionInfo, User } from '../lib/types'
 import { formatDateTime, formatBytes } from '../lib/time'
@@ -118,28 +119,59 @@ function ProfileSection() {
 function AppearanceSection() {
   const theme = useApp((s) => s.theme)
   const setTheme = useApp((s) => s.setTheme)
-  const options: { value: Theme; label: string; icon: React.ReactNode }[] = [
-    { value: 'light', label: 'Light', icon: <Sun size={16} /> },
-    { value: 'dark', label: 'Dark', icon: <Moon size={16} /> },
-    { value: 'system', label: 'System', icon: <Monitor size={16} /> },
-  ]
+  const palette = useApp((s) => s.palette)
+  const setPalette = useApp((s) => s.setPalette)
+  const dark =
+    theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   return (
     <Card title="Appearance">
-      <div className="flex gap-2">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            onClick={() => setTheme(o.value)}
-            className={cx(
-              'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
-              theme === o.value
-                ? 'border-accent bg-accent/10 text-ink'
-                : 'border-edge text-ink-1 hover:bg-bg-3',
-            )}
-          >
-            {o.icon} {o.label}
-          </button>
-        ))}
+      <div className="space-y-4">
+        <div>
+          <Label>Light or dark</Label>
+          <Segmented
+            value={theme}
+            onChange={setTheme}
+            options={[
+              { value: 'light', label: <><Sun size={15} /> Light</> },
+              { value: 'dark', label: <><Moon size={15} /> Dark</> },
+              { value: 'system', label: <><Monitor size={15} /> Match system</> },
+            ]}
+          />
+        </div>
+        <div>
+          <Label>Color theme</Label>
+          <p className="mb-2 text-xs text-ink-2">
+            Every theme works in light and dark mode. Pick whichever feels like you.
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {PALETTES.map((p) => {
+              const t = dark ? p.dark : p.light
+              const selected = palette === p.id
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setPalette(p.id)}
+                  className={cx(
+                    'rounded-xl border p-2 text-left transition-all',
+                    selected
+                      ? 'border-accent ring-2 ring-accent/40'
+                      : 'border-edge hover:border-ink-2',
+                  )}
+                  style={{ background: t['bg-1'] }}
+                >
+                  <span className="mb-1.5 flex gap-1">
+                    <span className="h-4 w-4 rounded-full border border-black/10" style={{ background: t.accent }} />
+                    <span className="h-4 w-4 rounded-full border border-black/10" style={{ background: t['bg-3'] }} />
+                    <span className="h-4 w-4 rounded-full border border-black/10" style={{ background: t['bg-0'] }} />
+                  </span>
+                  <span className="block truncate text-xs font-semibold" style={{ color: t['text-0'] }}>
+                    {p.label}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
     </Card>
   )

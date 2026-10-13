@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { api } from './lib/api'
+import { applyTheme, DEFAULT_PALETTE } from './lib/palettes'
 import type {
   Channel, FriendEntry, Group, GroupMember, GroupSummary, Message,
   ReadyPayload, User,
@@ -7,13 +8,6 @@ import type {
 
 export type Theme = 'light' | 'dark' | 'system'
 export type GatewayStatus = 'connecting' | 'online' | 'offline'
-
-function applyThemeClass(theme: Theme) {
-  const dark =
-    theme === 'dark' ||
-    (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
-  document.documentElement.classList.toggle('dark', dark)
-}
 
 interface AppState {
   me: User | null
@@ -39,9 +33,11 @@ interface AppState {
   loaded: Record<string, boolean>
 
   theme: Theme
+  palette: string
 
   // actions
   setTheme: (t: Theme) => void
+  setPalette: (p: string) => void
   setMe: (u: User | null) => void
   setGatewayStatus: (s: GatewayStatus) => void
   applyReady: (p: ReadyPayload) => void
@@ -85,11 +81,18 @@ export const useApp = create<AppState>((set, get) => ({
   loaded: {},
 
   theme: (localStorage.getItem('talaria-theme') as Theme) || 'system',
+  palette: localStorage.getItem('talaria-palette') || DEFAULT_PALETTE,
 
   setTheme: (t) => {
     localStorage.setItem('talaria-theme', t)
-    applyThemeClass(t)
+    applyTheme(get().palette, t)
     set({ theme: t })
+  },
+
+  setPalette: (p) => {
+    localStorage.setItem('talaria-palette', p)
+    applyTheme(p, get().theme)
+    set({ palette: p })
   },
 
   setMe: (u) => set({ me: u, authChecked: true }),
@@ -262,10 +265,11 @@ export const useApp = create<AppState>((set, get) => ({
   },
 }))
 
-// Keep system theme in sync with the OS.
+// Apply the saved theme on load and keep it in sync with the OS setting.
+applyTheme(useApp.getState().palette, useApp.getState().theme)
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  const t = useApp.getState().theme
-  if (t === 'system') applyThemeClass(t)
+  const { theme, palette } = useApp.getState()
+  if (theme === 'system') applyTheme(palette, theme)
 })
 
 // Helpers used across components.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { Hash, Menu, Phone, PhoneOff, Plus, Settings, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
+import { Hash, Menu, Moon, Phone, PhoneOff, Plus, Settings, Sun, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
 import { api } from '../lib/api'
 import { dmOther, dmTitle, displayName, useApp } from '../store'
 import { useCall } from '../call'
@@ -176,10 +176,10 @@ function RailButton({
         title={title}
         onClick={onClick}
         className={cx(
-          'flex h-12 w-12 items-center justify-center overflow-hidden transition-all',
+          'flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl transition-all',
           active
-            ? 'rounded-xl bg-accent text-accent-text'
-            : 'rounded-3xl bg-bg-1 text-ink-1 hover:rounded-xl hover:bg-accent hover:text-accent-text',
+            ? 'bg-accent text-accent-text shadow-sm'
+            : 'bg-bg-1 text-ink-1 hover:bg-bg-3 hover:text-ink',
         )}
       >
         {children}
@@ -407,7 +407,7 @@ function DMList() {
           <Users size={18} /> Friends
         </button>
         <div className="px-2 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-2">
-          Direct messages
+          Messages
         </div>
         {sorted.map((cid) => {
           const c = channels[cid]
@@ -436,7 +436,7 @@ function DMList() {
           )
         })}
         {sorted.length === 0 && (
-          <p className="px-2 py-1 text-xs text-ink-2">Message a friend to start a DM.</p>
+          <p className="px-2 py-1 text-xs text-ink-2">No messages yet — pick a friend and say hi!</p>
         )}
       </div>
     </>
@@ -446,8 +446,12 @@ function DMList() {
 function SelfBar() {
   const me = useApp((s) => s.me)
   const setMe = useApp((s) => s.setMe)
+  const theme = useApp((s) => s.theme)
+  const setTheme = useApp((s) => s.setTheme)
   const navigate = useNavigate()
   if (!me) return null
+  const dark =
+    theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   return (
     <div className="flex items-center gap-2 border-t border-edge bg-bg-2 p-2">
       <Avatar user={me} size={32} online />
@@ -455,12 +459,19 @@ function SelfBar() {
         <div className="truncate text-sm font-medium text-ink">{me.display_name}</div>
         <div className="truncate text-xs text-ink-2">{me.status_text || `@${me.username}`}</div>
       </div>
-      <Link to="/app/settings" title="Settings" className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink">
+      <button
+        title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+        className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
+        onClick={() => setTheme(dark ? 'light' : 'dark')}
+      >
+        {dark ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+      <Link to="/app/settings" title="Settings" className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink">
         <Settings size={18} />
       </Link>
       <button
         title="Sign out"
-        className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-danger"
+        className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-danger"
         onClick={async () => {
           await api.post('/api/v1/auth/logout').catch(() => {})
           setMe(null)

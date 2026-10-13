@@ -3,15 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#ffffff" />
     <title>Talaria</title>
     <script>
-      // Apply theme before first paint to avoid a flash.
+      // Apply the saved theme before first paint to avoid a flash. The app
+      // snapshots the active palette's variables to localStorage on change.
       (function () {
-        var t = localStorage.getItem('talaria-theme') || 'system';
-        var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-        if (dark) document.documentElement.classList.add('dark');
+        try {
+          var saved = JSON.parse(localStorage.getItem('talaria-theme-vars') || 'null');
+          var t = localStorage.getItem('talaria-theme') || 'system';
+          var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+          if (saved && saved.tokens) {
+            dark = !!saved.dark;
+            for (var k in saved.tokens) document.documentElement.style.setProperty('--' + k, saved.tokens[k]);
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta && saved.tokens['bg-1']) meta.setAttribute('content', saved.tokens['bg-1']);
+          }
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) { /* defaults apply */ }
       })();
     </script>
   </head>

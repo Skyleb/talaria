@@ -17,9 +17,11 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' }) {
   const base =
-    'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+    'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ' +
+    'active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100'
   const styles = {
-    primary: 'bg-accent text-accent-text hover:bg-accent-hover',
+    primary: 'bg-accent text-accent-text shadow-sm hover:bg-accent-hover',
     ghost: 'bg-transparent text-ink-1 hover:bg-bg-3 hover:text-ink',
     danger: 'bg-danger text-white hover:opacity-90',
   }[variant]
@@ -30,8 +32,8 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cx(
-        'w-full rounded-lg border border-edge bg-bg-0 px-3 py-2 text-sm text-ink',
-        'placeholder:text-ink-2 focus:border-accent focus:outline-none',
+        'w-full rounded-xl border border-edge bg-bg-0 px-3 py-2 text-sm text-ink',
+        'placeholder:text-ink-2 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25',
         className,
       )}
       {...props}
@@ -43,12 +45,42 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
   return (
     <select
       className={cx(
-        'w-full rounded-lg border border-edge bg-bg-0 px-3 py-2 text-sm text-ink',
-        'focus:border-accent focus:outline-none',
+        'w-full rounded-xl border border-edge bg-bg-0 px-3 py-2 text-sm text-ink',
+        'focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25',
         className,
       )}
       {...props}
     />
+  )
+}
+
+// Segmented: a row of mutually exclusive choices (used for theme mode).
+export function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T
+  onChange: (v: T) => void
+  options: { value: T; label: ReactNode }[]
+}) {
+  return (
+    <div className="inline-flex rounded-xl bg-bg-2 p-1">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={cx(
+            'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+            value === o.value
+              ? 'bg-bg-1 text-ink shadow-sm'
+              : 'text-ink-1 hover:text-ink',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -109,13 +141,27 @@ export function Modal({
 }
 
 // Full-page centered card used by auth/setup screens.
-export function AuthCard({ title, children }: { title: string; children: ReactNode }) {
+export function AuthCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  children: ReactNode
+}) {
   return (
     <div className="flex min-h-full items-center justify-center bg-bg-0 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-bg-1 p-6 shadow-lg border border-edge">
+      <div className="w-full max-w-sm rounded-3xl border border-edge bg-bg-1 p-7 shadow-lg">
         <div className="mb-6 text-center">
-          <div className="mb-2 text-3xl">🪽</div>
+          <div
+            className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl text-4xl shadow-md"
+            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-hover))' }}
+          >
+            🪽
+          </div>
           <h1 className="text-xl font-bold text-ink">{title}</h1>
+          <p className="mt-1 text-sm text-ink-1">{subtitle ?? 'Your own place to hang out'}</p>
         </div>
         {children}
       </div>

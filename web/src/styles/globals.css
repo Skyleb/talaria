@@ -61,8 +61,18 @@ html, body, #root {
 body {
   background: var(--bg-0);
   color: var(--text-0);
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Nunito Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   overscroll-behavior: none;
+}
+
+/* Theme switches feel intentional instead of abrupt. */
+body, header, nav, main, aside, section, button, input, select, textarea {
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Chat markdown content */

@@ -31,7 +31,7 @@ export default function Login() {
   }
 
   return (
-    <AuthCard title="Sign in to Talaria">
+    <AuthCard title="Welcome back" subtitle="Sign in to your Talaria">
       <form className="space-y-4" onSubmit={submit}>
         <div>
           <Label>Username</Label>
@@ -46,7 +46,7 @@ export default function Login() {
           {busy ? 'Signing in…' : 'Sign in'}
         </Button>
         <p className="text-center text-sm text-ink-1">
-          Have an invite? <Link to="/register" className="text-accent hover:underline">Create an account</Link>
+          Have an invite? <Link to="/register" className="font-semibold text-accent hover:underline">Join here</Link>
         </p>
       </form>
     </AuthCard>
