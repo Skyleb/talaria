@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -31,10 +32,10 @@ func TestSplitZone(t *testing.T) {
 }
 
 // fakePorkbun is an in-memory stand-in for the Porkbun API: records keyed
-// by "type name", plus a log of the endpoints hit.
+// by "type name" (several values allowed), plus a log of the endpoints hit.
 type fakePorkbun struct {
 	t       *testing.T
-	records map[string]string
+	records map[string][]string
 	calls   []string
 }
 
@@ -68,19 +69,22 @@ func (f *fakePorkbun) handler(w http.ResponseWriter, r *http.Request) {
 	case parts[1] == "retrieveByNameType":
 		recs := []map[string]string{}
 		host := name(parts[2], subOf())
-		if c, ok := f.records[key(parts[3], host)]; ok {
-			recs = append(recs, map[string]string{"id": "1", "name": host, "type": parts[3], "content": c})
+		for i, c := range f.records[key(parts[3], host)] {
+			recs = append(recs, map[string]string{"id": strconv.Itoa(i + 1), "name": host, "type": parts[3], "content": c})
 		}
 		out["records"] = recs
 	case parts[1] == "editByNameType":
 		k := key(parts[3], name(parts[2], subOf()))
-		if _, ok := f.records[k]; !ok {
+		if len(f.records[k]) == 0 {
 			http.Error(w, `{"status":"ERROR","message":"Edit error"}`, 400)
 			return
 		}
-		f.records[k] = body["content"]
+		for i := range f.records[k] {
+			f.records[k][i] = body["content"]
+		}
 	case parts[1] == "create":
-		f.records[key(body["type"], name(parts[2], body["name"]))] = body["content"]
+		k := key(body["type"], name(parts[2], body["name"]))
+		f.records[k] = append(f.records[k], body["content"])
 	case parts[1] == "deleteByNameType":
 		delete(f.records, key(parts[3], name(parts[2], subOf())))
 	default:
@@ -90,7 +94,7 @@ func (f *fakePorkbun) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func newFake(t *testing.T) (*fakePorkbun, *Porkbun) {
-	f := &fakePorkbun{t: t, records: map[string]string{}}
+	f := &fakePorkbun{t: t, records: map[string][]string{}}
 	srv := httptest.NewServer(http.HandlerFunc(f.handler))
 	t.Cleanup(srv.Close)
 	return f, &Porkbun{APIKey: "pk", Secret: "sk", BaseURL: srv.URL, IPURL: srv.URL + "/ping"}
@@ -104,7 +108,7 @@ func TestPorkbunARecordLifecycle(t *testing.T) {
 	if err := updatePorkbun(ctx, p, Config{Domain: "talaria.gg"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.records["A talaria.gg"]; got != "203.0.113.7" {
+	if got := f.records["A talaria.gg"]; len(got) != 1 || got[0] != "203.0.113.7" {
 		t.Fatalf("apex A = %q", got)
 	}
 	// Same IP again: nothing written.
@@ -124,11 +128,23 @@ func TestPorkbunARecordLifecycle(t *testing.T) {
 	if err := updatePorkbun(ctx, p, Config{Domain: "lan.talaria.gg", IP: "192.168.1.21"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.records["A lan.talaria.gg"]; got != "192.168.1.21" {
+	if got := f.records["A lan.talaria.gg"]; len(got) != 1 || got[0] != "192.168.1.21" {
 		t.Fatalf("lan A = %q", got)
 	}
 	if !strings.Contains(strings.Join(f.calls, "\n"), "dns/editByNameType/talaria.gg/A/lan") {
 		t.Fatalf("expected an edit call, got %v", f.calls)
+	}
+}
+
+func TestPorkbunReplacesParkingRecords(t *testing.T) {
+	f, p := newFake(t)
+	// A freshly bought domain carries the registrar's two parking A records.
+	f.records["A talaria.gg"] = []string{"207.207.210.107", "207.207.210.229"}
+	if err := updatePorkbun(context.Background(), p, Config{Domain: "talaria.gg"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.records["A talaria.gg"]; len(got) != 1 || got[0] != "203.0.113.7" {
+		t.Fatalf("apex A = %q, want exactly one record with the detected IP", got)
 	}
 }
 
@@ -138,7 +154,7 @@ func TestPorkbunTXT(t *testing.T) {
 	if err := p.SetTXT(ctx, "lan.talaria.gg", "challenge-1"); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.records["TXT _acme-challenge.lan.talaria.gg"]; got != "challenge-1" {
+	if got := f.records["TXT _acme-challenge.lan.talaria.gg"]; len(got) != 1 || got[0] != "challenge-1" {
 		t.Fatalf("TXT = %q", got)
 	}
 	if err := p.SetTXT(ctx, "lan.talaria.gg", ""); err != nil {

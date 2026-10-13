@@ -79,11 +79,18 @@ func (p *Porkbun) SetRecord(ctx context.Context, host, typ, content string) erro
 	if len(existing) == 1 && existing[0].Content == content {
 		return nil
 	}
-	if len(existing) > 0 {
+	if len(existing) == 1 {
 		_, err = p.post(ctx, p.url("dns/editByNameType", zone, typ, sub), map[string]string{
 			"content": content, "ttl": porkbunTTL,
 		})
 		return err
+	}
+	if len(existing) > 1 {
+		// Several records (e.g. the registrar's parking A records): replace
+		// them all with one rather than editing each to the same value.
+		if _, err = p.post(ctx, p.url("dns/deleteByNameType", zone, typ, sub), nil); err != nil {
+			return err
+		}
 	}
 	_, err = p.post(ctx, p.url("dns/create", zone), map[string]string{
 		"name": sub, "type": typ, "content": content, "ttl": porkbunTTL,
