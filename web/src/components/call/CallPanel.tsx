@@ -420,13 +420,15 @@ function TileView({
       onClick={onClick}
       title={hint}
       className={cx(
-        'group relative overflow-hidden rounded-xl bg-black transition-shadow',
+        'group relative rounded-xl bg-black transition-shadow',
         fill ? 'h-full w-full' : 'aspect-video',
         tile.speaking && 'ring-2 ring-success',
         !tile.speaking && onClick && 'cursor-pointer hover:ring-2 hover:ring-accent/60',
       )}
     >
-      {body}
+      {/* The picture clips to the rounded corners; the label and its popover
+          sit outside that clip so a small tile cannot cut the popover off. */}
+      <div className="absolute inset-0 overflow-hidden rounded-xl">{body}</div>
       <button
         onClick={(e) => {
           if (!canAdjust) return
@@ -486,10 +488,18 @@ function VolumePopover({
     mixer.setUserVolume(userId, v)
   }
   return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className="absolute bottom-8 left-1.5 z-10 w-60 rounded-xl border border-edge bg-bg-1 p-3 text-ink shadow-xl"
-    >
+    <>
+      {/* On phones the popover is a sheet above the controls; tapping
+          anywhere else closes it. */}
+      <div className="fixed inset-0 z-10 sm:hidden" onClick={(e) => { e.stopPropagation(); onClose() }} />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={cx(
+          'z-20 rounded-xl border border-edge bg-bg-1 p-3 text-ink shadow-xl',
+          'fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)]',
+          'sm:absolute sm:inset-x-auto sm:bottom-8 sm:left-1.5 sm:z-10 sm:w-60',
+        )}
+      >
       <div className="mb-2 flex items-center justify-between text-xs">
         <span className="truncate font-medium">{name}</span>
         <span className="tabular-nums text-ink-2">{Math.round(vol * 100)}%</span>
@@ -531,7 +541,8 @@ function VolumePopover({
           Done
         </button>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -561,7 +572,7 @@ function Controls({ onListen, listening, queueOpen }: { onListen: () => void; li
   const canCapture = !!navigator.mediaDevices?.getUserMedia
   const canFlip = useHasSeveralCameras(cameraOn)
   return (
-    <div className="flex items-center justify-center gap-2">
+    <div className="flex flex-wrap items-center justify-center gap-1.5 px-2 sm:gap-2">
       <CtlBtn title={muted ? 'Unmute' : 'Mute'} active={!muted} onClick={toggleMute} disabled={!canCapture}>
         {muted ? <MicOff size={18} /> : <Mic size={18} />}
       </CtlBtn>
@@ -591,7 +602,7 @@ function Controls({ onListen, listening, queueOpen }: { onListen: () => void; li
       <button
         title="Leave call"
         onClick={leave}
-        className="rounded-full bg-danger p-2.5 text-white hover:opacity-90"
+        className="rounded-full bg-danger p-2 text-white hover:opacity-90 sm:p-2.5"
       >
         <PhoneOff size={18} />
       </button>
@@ -638,7 +649,17 @@ function QualityButton() {
         <SlidersHorizontal size={18} />
       </CtlBtn>
       {open && (
-        <div className="absolute bottom-12 left-1/2 z-10 w-64 -translate-x-1/2 rounded-xl border border-edge bg-bg-1 p-3 text-left text-sm text-ink shadow-xl">
+        <>
+          <div className="fixed inset-0 z-10 sm:hidden" onClick={() => setOpen(false)} />
+          <div
+            className={cx(
+              'z-20 rounded-xl border border-edge bg-bg-1 p-3 text-left text-sm text-ink shadow-xl',
+              // Phones: a sheet above the controls that scrolls if it must.
+              'fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] max-h-[70dvh] overflow-y-auto',
+              // Wider screens: anchored under the button.
+              'sm:absolute sm:inset-x-auto sm:bottom-12 sm:left-1/2 sm:z-10 sm:max-h-none sm:w-64 sm:-translate-x-1/2 sm:overflow-visible',
+            )}
+          >
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-1">Microphone</label>
           <Select value={prefs.micTier} onChange={(e) => set({ micTier: e.target.value as AVPrefs['micTier'] })}>
             {(Object.keys(MIC_TIERS) as AVPrefs['micTier'][]).map((t) => (
@@ -679,7 +700,8 @@ function QualityButton() {
           <button onClick={() => setOpen(false)} className="mt-3 w-full rounded-lg bg-bg-2 py-1.5 text-xs text-ink-1 hover:bg-bg-3 hover:text-ink">
             Done
           </button>
-        </div>
+          </div>
+        </>
       )}
     </div>
   )
@@ -700,7 +722,7 @@ function CtlBtn({
       disabled={disabled}
       onClick={onClick}
       className={cx(
-        'rounded-full p-2.5 transition-colors disabled:opacity-40',
+        'rounded-full p-2 transition-colors disabled:opacity-40 sm:p-2.5',
         active ? 'bg-bg-1 text-ink hover:bg-bg-3' : 'bg-bg-3 text-ink-1 hover:text-ink',
       )}
     >
