@@ -24,6 +24,7 @@ import (
 	"github.com/skyle/talaria/internal/config"
 	"github.com/skyle/talaria/internal/ddns"
 	"github.com/skyle/talaria/internal/gateway"
+	"github.com/skyle/talaria/internal/lanaccess"
 	"github.com/skyle/talaria/internal/landns"
 	"github.com/skyle/talaria/internal/rtc"
 	"github.com/skyle/talaria/internal/store"
@@ -148,11 +149,8 @@ func main() {
 		}
 	}
 
-	handler := srv.Router()
-
-	// LAN DNS: answers this server's domain with its LAN IP for devices on
-	// the local network (fixes routers with broken NAT loopback). Also
-	// runtime-reconfigurable from the admin settings UI.
+	// LAN DNS (optional, toml-only): answers this server's domain with its
+	// LAN IP for devices whose DNS points at this machine.
 	lanDNS := landns.NewRunner(log)
 	defer lanDNS.Stop()
 	srv.LanDNS = lanDNS
@@ -183,6 +181,32 @@ func main() {
 	}
 	authMgr.Secure = useACME || useSelfSigned
 
+	// LAN access: a second domain pointing at this machine's LAN IP, with
+	// its own DNS-01 certificate. Devices hitting the main domain through
+	// the router's NAT loopback get redirected to it. Runtime-reconfigurable
+	// from the admin settings UI.
+	lanAccess := lanaccess.NewRunner(log)
+	defer lanAccess.Stop()
+	srv.LanAccess = lanAccess
+	if cfg.LanAccess.Enabled {
+		if !useACME {
+			log.Error("lan_access requires HTTPS with a domain (tls mode auto/acme); not started")
+		} else {
+			token := cfg.LanAccess.Token
+			if token == "" {
+				token = cfg.DDNS.Token
+			}
+			if err := lanAccess.Set(lanaccess.Config{
+				Domain: cfg.LanAccess.Domain, Token: token,
+				LanIP: cfg.LanAccess.LanIP, DataDir: dataDir,
+			}); err != nil {
+				log.Error("lan access not started", "err", err)
+			}
+		}
+	}
+
+	handler := srv.Router()
+
 	var servers []*http.Server
 	errCh := make(chan error, 3)
 
@@ -196,10 +220,18 @@ func main() {
 				errCh <- fmt.Errorf(":80 listener (needed for Let's Encrypt): %w", err)
 			}
 		}()
+		// SNI dispatch: the lan domain's DNS-01 cert when asked for it,
+		// else autocert's HTTP-01 cert for the main domain.
+		getCert := func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if lanAccess.Matches(hello.ServerName) {
+				return lanAccess.Certificate()
+			}
+			return m.GetCertificate(hello)
+		}
 		tlsSrv := &http.Server{
 			Addr:      ":" + strconv.Itoa(cfg.TLS.HTTPSPort),
 			Handler:   handler,
-			TLSConfig: &tls.Config{GetCertificate: m.GetCertificate, MinVersion: tls.VersionTLS12},
+			TLSConfig: &tls.Config{GetCertificate: getCert, MinVersion: tls.VersionTLS12},
 		}
 		servers = append(servers, tlsSrv)
 		go func() {

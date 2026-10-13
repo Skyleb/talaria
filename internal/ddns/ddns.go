@@ -21,6 +21,9 @@ type Config struct {
 	Domain   string // full hostname, e.g. skyle.duckdns.org
 	Token    string
 	URL      string // custom provider only
+	// IP pins the record to an explicit address (e.g. a LAN IP for the
+	// lan-access domain). Empty = the provider detects the caller's IP.
+	IP       string
 	Interval time.Duration
 }
 
@@ -80,14 +83,41 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) {
 	}
 }
 
+// SetDuckDNSTXT sets (or, with empty txt, clears) the TXT record DuckDNS
+// serves for the domain — used for Let's Encrypt DNS-01 challenges.
+func SetDuckDNSTXT(ctx context.Context, domain, token, txt string) error {
+	sub := strings.TrimSuffix(domain, ".duckdns.org")
+	endpoint := fmt.Sprintf("https://www.duckdns.org/update?domains=%s&token=%s&txt=%s",
+		url.QueryEscape(sub), url.QueryEscape(token), url.QueryEscape(txt))
+	if txt == "" {
+		endpoint += "&clear=true"
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	if trimmed := strings.TrimSpace(string(body)); trimmed != "OK" {
+		return fmt.Errorf("duckdns rejected the TXT update: %q", trimmed)
+	}
+	return nil
+}
+
 func updateOnce(ctx context.Context, cfg Config) error {
 	var endpoint string
 	switch cfg.Provider {
 	case "duckdns":
 		// DuckDNS wants the subdomain label only; strip the suffix if present.
 		sub := strings.TrimSuffix(cfg.Domain, ".duckdns.org")
-		endpoint = fmt.Sprintf("https://www.duckdns.org/update?domains=%s&token=%s&ip=",
-			url.QueryEscape(sub), url.QueryEscape(cfg.Token))
+		endpoint = fmt.Sprintf("https://www.duckdns.org/update?domains=%s&token=%s&ip=%s",
+			url.QueryEscape(sub), url.QueryEscape(cfg.Token), url.QueryEscape(cfg.IP))
 	case "custom":
 		endpoint = strings.NewReplacer(
 			"{DOMAIN}", url.QueryEscape(cfg.Domain),

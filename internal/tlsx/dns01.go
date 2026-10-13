@@ -1,0 +1,280 @@
+package tlsx
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"golang.org/x/crypto/acme"
+
+	"github.com/skyle/talaria/internal/ddns"
+)
+
+// DNS01Manager obtains and renews a Let's Encrypt certificate for one domain
+// using the DNS-01 challenge with DuckDNS TXT records. This is how the
+// lan-access domain gets a trusted certificate: it resolves to a private IP,
+// which HTTP-01 validation could never reach.
+type DNS01Manager struct {
+	domain    string
+	token     string
+	dir       string
+	directory string // ACME directory URL; "" = Let's Encrypt production
+	log       *slog.Logger
+
+	cert   atomic.Pointer[tls.Certificate]
+	errMu  sync.Mutex
+	lastErr string
+	cancel context.CancelFunc
+}
+
+// renewBefore is how far ahead of expiry renewal starts.
+const renewBefore = 30 * 24 * time.Hour
+
+// NewDNS01Manager loads any cached certificate and starts the obtain/renew
+// loop in the background. directoryURL "" selects Let's Encrypt production.
+func NewDNS01Manager(dataDir, domain, token, directoryURL string, log *slog.Logger) *DNS01Manager {
+	if directoryURL == "" {
+		directoryURL = acme.LetsEncryptURL
+	}
+	m := &DNS01Manager{
+		domain:    strings.ToLower(domain),
+		token:     token,
+		dir:       filepath.Join(dataDir, "certs", "lan", strings.ToLower(domain)),
+		directory: directoryURL,
+		log:       log,
+	}
+	m.loadCached()
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+	go m.maintain(ctx)
+	return m
+}
+
+// Certificate returns the current certificate, or an error (including the
+// last issuance failure) while none is available yet.
+func (m *DNS01Manager) Certificate() (*tls.Certificate, error) {
+	if c := m.cert.Load(); c != nil {
+		return c, nil
+	}
+	m.errMu.Lock()
+	defer m.errMu.Unlock()
+	if m.lastErr != "" {
+		return nil, fmt.Errorf("no certificate for %s yet: %s", m.domain, m.lastErr)
+	}
+	return nil, fmt.Errorf("certificate for %s is still being issued", m.domain)
+}
+
+// Status reports whether a certificate is loaded, its expiry, and the last
+// issuance error (if any).
+func (m *DNS01Manager) Status() (ok bool, notAfter time.Time, lastErr string) {
+	m.errMu.Lock()
+	lastErr = m.lastErr
+	m.errMu.Unlock()
+	if c := m.cert.Load(); c != nil && c.Leaf != nil {
+		return true, c.Leaf.NotAfter, lastErr
+	}
+	return false, time.Time{}, lastErr
+}
+
+func (m *DNS01Manager) Close() { m.cancel() }
+
+func (m *DNS01Manager) setErr(err error) {
+	m.errMu.Lock()
+	defer m.errMu.Unlock()
+	if err == nil {
+		m.lastErr = ""
+	} else {
+		m.lastErr = err.Error()
+	}
+}
+
+func (m *DNS01Manager) maintain(ctx context.Context) {
+	m.ensure(ctx)
+	t := time.NewTicker(12 * time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			m.ensure(ctx)
+		}
+	}
+}
+
+func (m *DNS01Manager) ensure(ctx context.Context) {
+	if c := m.cert.Load(); c != nil && c.Leaf != nil && time.Until(c.Leaf.NotAfter) > renewBefore {
+		return
+	}
+	obtainCtx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+	defer cancel()
+	if err := m.obtain(obtainCtx); err != nil {
+		m.setErr(err)
+		m.log.Error("lan cert issuance failed", "domain", m.domain, "err", err)
+	} else {
+		m.setErr(nil)
+		if c := m.cert.Load(); c != nil && c.Leaf != nil {
+			m.log.Info("lan cert issued", "domain", m.domain, "expires", c.Leaf.NotAfter.Format(time.RFC3339))
+		}
+	}
+}
+
+func (m *DNS01Manager) loadCached() {
+	cert, err := tls.LoadX509KeyPair(filepath.Join(m.dir, "cert.pem"), filepath.Join(m.dir, "key.pem"))
+	if err != nil {
+		return
+	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil || time.Now().After(leaf.NotAfter) {
+		return
+	}
+	cert.Leaf = leaf
+	m.cert.Store(&cert)
+}
+
+func (m *DNS01Manager) obtain(ctx context.Context) error {
+	if err := os.MkdirAll(m.dir, 0o755); err != nil {
+		return err
+	}
+	acctKey, err := loadOrCreateKey(filepath.Join(m.dir, "account.key"))
+	if err != nil {
+		return fmt.Errorf("account key: %w", err)
+	}
+	client := &acme.Client{Key: acctKey, DirectoryURL: m.directory}
+	if _, err := client.Register(ctx, &acme.Account{}, acme.AcceptTOS); err != nil &&
+		!errors.Is(err, acme.ErrAccountAlreadyExists) {
+		return fmt.Errorf("acme register: %w", err)
+	}
+
+	order, err := client.AuthorizeOrder(ctx, acme.DomainIDs(m.domain))
+	if err != nil {
+		return fmt.Errorf("authorize order: %w", err)
+	}
+	// Always clear the TXT record afterwards; it's only challenge plumbing.
+	defer func() {
+		clearCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		ddns.SetDuckDNSTXT(clearCtx, m.domain, m.token, "")
+	}()
+	for _, zurl := range order.AuthzURLs {
+		z, err := client.GetAuthorization(ctx, zurl)
+		if err != nil {
+			return err
+		}
+		if z.Status == acme.StatusValid {
+			continue
+		}
+		var chal *acme.Challenge
+		for _, c := range z.Challenges {
+			if c.Type == "dns-01" {
+				chal = c
+				break
+			}
+		}
+		if chal == nil {
+			return errors.New("ACME offered no dns-01 challenge")
+		}
+		txt, err := client.DNS01ChallengeRecord(chal.Token)
+		if err != nil {
+			return err
+		}
+		if err := ddns.SetDuckDNSTXT(ctx, m.domain, m.token, txt); err != nil {
+			return fmt.Errorf("set duckdns TXT: %w", err)
+		}
+		// DuckDNS is authoritative and serves the TXT immediately; a short
+		// pause avoids racing the validator's first lookup.
+		select {
+		case <-time.After(10 * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if _, err := client.Accept(ctx, chal); err != nil {
+			return fmt.Errorf("accept challenge: %w", err)
+		}
+		if _, err := client.WaitAuthorization(ctx, zurl); err != nil {
+			return fmt.Errorf("dns-01 validation: %w", err)
+		}
+	}
+	if _, err := client.WaitOrder(ctx, order.URI); err != nil {
+		return fmt.Errorf("wait order: %w", err)
+	}
+
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+	csr, err := x509.CreateCertificateRequest(rand.Reader,
+		&x509.CertificateRequest{DNSNames: []string{m.domain}}, certKey)
+	if err != nil {
+		return err
+	}
+	chain, _, err := client.CreateOrderCert(ctx, order.FinalizeURL, csr, true)
+	if err != nil {
+		return fmt.Errorf("finalize: %w", err)
+	}
+	leaf, err := x509.ParseCertificate(chain[0])
+	if err != nil {
+		return err
+	}
+
+	// Persist, then publish.
+	keyDER, err := x509.MarshalECPrivateKey(certKey)
+	if err != nil {
+		return err
+	}
+	keyOut, err := os.OpenFile(filepath.Join(m.dir, "key.pem"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	keyOut.Close()
+	certOut, err := os.Create(filepath.Join(m.dir, "cert.pem"))
+	if err != nil {
+		return err
+	}
+	for _, der := range chain {
+		pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: der})
+	}
+	certOut.Close()
+
+	m.cert.Store(&tls.Certificate{Certificate: chain, PrivateKey: certKey, Leaf: leaf})
+	return nil
+}
+
+func loadOrCreateKey(path string) (*ecdsa.PrivateKey, error) {
+	if data, err := os.ReadFile(path); err == nil {
+		if block, _ := pem.Decode(data); block != nil {
+			return x509.ParseECPrivateKey(block.Bytes)
+		}
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	der, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	defer out.Close()
+	if err := pem.Encode(out, &pem.Block{Type: "EC PRIVATE KEY", Bytes: der}); err != nil {
+		return nil, err
+	}
+	return key, nil
+}

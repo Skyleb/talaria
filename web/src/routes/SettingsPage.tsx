@@ -6,7 +6,7 @@ import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
 import { Button, cx, ErrorText, Input, Label, Select } from '../components/ui'
 import { PageHeader } from './AppShell'
-import type { Invite, LanDNSStatus, ServerConfig, SessionInfo, User } from '../lib/types'
+import type { Invite, LanAccessStatus, ServerConfig, SessionInfo, User } from '../lib/types'
 import { formatDateTime, formatBytes } from '../lib/time'
 
 export default function SettingsPage({ onMenu }: { onMenu: () => void }) {
@@ -348,7 +348,7 @@ function ServerConfigSection() {
   const [cfg, setCfg] = useState<ServerConfig | null>(null)
   const [configPath, setConfigPath] = useState('')
   const [lanIP, setLanIP] = useState('')
-  const [dnsStatus, setDnsStatus] = useState<LanDNSStatus | null>(null)
+  const [lanStatus, setLanStatus] = useState<LanAccessStatus | null>(null)
   const [restartItems, setRestartItems] = useState<string[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
   const [msg, setMsg] = useState('')
@@ -357,14 +357,14 @@ function ServerConfigSection() {
 
   useEffect(() => {
     api
-      .get<{ config: ServerConfig; config_path: string; lan_ip: string; landns_status: LanDNSStatus }>(
+      .get<{ config: ServerConfig; config_path: string; lan_ip: string; lanaccess_status: LanAccessStatus }>(
         '/api/v1/admin/config',
       )
       .then((r) => {
         setCfg(r.config)
         setConfigPath(r.config_path)
         setLanIP(r.lan_ip)
-        setDnsStatus(r.landns_status)
+        setLanStatus(r.lanaccess_status)
       })
       .catch((e: any) => setErr(e?.message ?? 'Could not load server configuration'))
   }, [])
@@ -389,12 +389,12 @@ function ServerConfigSection() {
         config: ServerConfig
         restart_required: string[]
         warnings: string[]
-        landns_status: LanDNSStatus
+        lanaccess_status: LanAccessStatus
       }>('/api/v1/admin/config', cfg)
       setCfg(r.config)
       setRestartItems(r.restart_required ?? [])
       setWarnings(r.warnings ?? [])
-      setDnsStatus(r.landns_status)
+      setLanStatus(r.lanaccess_status)
       setMsg('Saved.')
     } catch (e: any) {
       setErr(e?.message ?? 'Could not save')
@@ -515,43 +515,42 @@ function ServerConfigSection() {
         </div>
 
         <div className="space-y-3">
-          <SubHead>LAN DNS</SubHead>
+          <SubHead>Home network access</SubHead>
           <Toggle
-            checked={cfg.lan_dns.enabled}
-            onChange={(v) => patch('lan_dns', { enabled: v })}
-            label="Answer DNS for this server's domain on the local network"
-            hint="Fixes routers that can't reach your domain from inside your own WiFi (broken NAT loopback). Applies immediately on save."
+            checked={cfg.lan_access.enabled}
+            onChange={(v) => patch('lan_access', { enabled: v })}
+            label="Same URL at home — route WiFi devices around the router"
+            hint="Fixes routers that break the main domain inside your own network. No router or device changes needed; applies immediately on save."
           />
-          {cfg.lan_dns.enabled && (
+          {cfg.lan_access.enabled && (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Upstream resolvers</Label>
-                  <Input
-                    value={cfg.lan_dns.upstream}
-                    onChange={(e) => patch('lan_dns', { upstream: e.target.value })}
-                    placeholder="1.1.1.1, 8.8.8.8"
-                  />
-                </div>
-                <div>
-                  <Label>Answer IP (optional)</Label>
-                  <Input
-                    value={cfg.lan_dns.answer_ip}
-                    onChange={(e) => patch('lan_dns', { answer_ip: e.target.value })}
-                    placeholder={lanIP ? `auto (${lanIP})` : 'auto-detected'}
-                  />
-                </div>
-              </div>
-              {dnsStatus?.active ? (
-                <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
-                  LAN DNS is running. Final step: in your router's DHCP/LAN settings, set the DNS
-                  server to <strong>{lanIP || 'this machine’s IP'}</strong> — then every device
-                  on your network resolves the domain locally. Devices pick it up when they
-                  reconnect to WiFi.
+              <div>
+                <Label>Home domain</Label>
+                <Input
+                  value={cfg.lan_access.domain}
+                  onChange={(e) => patch('lan_access', { domain: e.target.value })}
+                  placeholder="yourname-lan.duckdns.org"
+                />
+                <p className="mt-1 text-xs text-ink-2">
+                  Create this as a second free subdomain at duckdns.org (any IP — Talaria takes it
+                  over, pointing it at this machine{lanIP ? ` (${lanIP})` : ''} and fetching its
+                  certificate automatically). Uses your DuckDNS token from above.
                 </p>
-              ) : dnsStatus?.error ? (
+              </div>
+              {lanStatus?.active && lanStatus.cert_ok ? (
+                <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
+                  Active — devices on your WiFi are transparently redirected to{' '}
+                  <strong>{lanStatus.domain}</strong> ({lanStatus.lan_ip}) with a valid certificate
+                  {lanStatus.cert_expires ? `, renews before ${new Date(lanStatus.cert_expires).toLocaleDateString()}` : ''}.
+                </p>
+              ) : lanStatus?.active ? (
+                <p className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
+                  Setting up — fetching the Let's Encrypt certificate (takes about a minute;
+                  reload this page to refresh). {lanStatus.error && `Last error: ${lanStatus.error}`}
+                </p>
+              ) : lanStatus?.error ? (
                 <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
-                  LAN DNS is not running: {dnsStatus.error}
+                  Not running: {lanStatus.error}
                 </p>
               ) : null}
             </>

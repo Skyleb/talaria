@@ -151,10 +151,9 @@ export interface ServerConfig {
     url: string
     interval_minutes: number
   }
-  lan_dns: {
+  lan_access: {
     enabled: boolean
-    upstream: string
-    answer_ip: string
+    domain: string
   }
   webrtc: {
     udp_port: number
@@ -162,7 +161,11 @@ export interface ServerConfig {
   }
 }
 
-export interface LanDNSStatus {
+export interface LanAccessStatus {
   active: boolean
-  error: string
+  domain?: string
+  lan_ip?: string
+  cert_ok?: boolean
+  cert_expires?: string
+  error?: string
 }

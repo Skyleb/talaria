@@ -10,12 +10,13 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `toml:"server"`
-	TLS    TLSConfig    `toml:"tls"`
-	DDNS   DDNSConfig   `toml:"ddns"`
-	LanDNS LanDNSConfig `toml:"lan_dns"`
-	WebRTC WebRTCConfig `toml:"webrtc"`
-	Net    NetConfig    `toml:"net"`
+	Server    ServerConfig    `toml:"server"`
+	TLS       TLSConfig       `toml:"tls"`
+	DDNS      DDNSConfig      `toml:"ddns"`
+	LanAccess LanAccessConfig `toml:"lan_access"`
+	LanDNS    LanDNSConfig    `toml:"lan_dns"`
+	WebRTC    WebRTCConfig    `toml:"webrtc"`
+	Net       NetConfig       `toml:"net"`
 
 	// Path this config was loaded from (not serialized).
 	path string `toml:"-"`
@@ -54,6 +55,18 @@ type DDNSConfig struct {
 	URL      string `toml:"url"` // custom provider: templates {DOMAIN} {TOKEN}
 	// IntervalMinutes between updates (default 5).
 	IntervalMinutes int `toml:"interval_minutes"`
+}
+
+// LanAccessConfig gives the server a second domain that resolves to its
+// private LAN IP with its own Let's Encrypt certificate (DNS-01). Devices on
+// the home network reaching the main domain through the router's (often
+// broken) NAT loopback are redirected to it transparently — no router or
+// per-device changes needed.
+type LanAccessConfig struct {
+	Enabled bool   `toml:"enabled"`
+	Domain  string `toml:"domain"` // e.g. yourname-lan.duckdns.org
+	Token   string `toml:"token"`  // defaults to ddns.token
+	LanIP   string `toml:"lan_ip"` // defaults to auto-detect
 }
 
 // LanDNSConfig embeds a small DNS forwarder that answers queries for this

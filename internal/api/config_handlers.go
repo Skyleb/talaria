@@ -1,13 +1,13 @@
 package api
 
 import (
-	"net"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/skyle/talaria/internal/ddns"
+	"github.com/skyle/talaria/internal/lanaccess"
 	"github.com/skyle/talaria/internal/landns"
 )
 
@@ -34,11 +34,10 @@ type configPayload struct {
 		URL             string `json:"url"`
 		IntervalMinutes int    `json:"interval_minutes"`
 	} `json:"ddns"`
-	LanDNS struct {
-		Enabled  bool   `json:"enabled"`
-		Upstream string `json:"upstream"`
-		AnswerIP string `json:"answer_ip"`
-	} `json:"lan_dns"`
+	LanAccess struct {
+		Enabled bool   `json:"enabled"`
+		Domain  string `json:"domain"`
+	} `json:"lan_access"`
 	WebRTC struct {
 		UDPPort  int    `json:"udp_port"`
 		PublicIP string `json:"public_ip"`
@@ -62,9 +61,8 @@ func (s *Server) configSnapshot() configPayload {
 	p.DDNS.Token = c.DDNS.Token
 	p.DDNS.URL = c.DDNS.URL
 	p.DDNS.IntervalMinutes = c.DDNS.IntervalMinutes
-	p.LanDNS.Enabled = c.LanDNS.Enabled
-	p.LanDNS.Upstream = c.LanDNS.Upstream
-	p.LanDNS.AnswerIP = c.LanDNS.AnswerIP
+	p.LanAccess.Enabled = c.LanAccess.Enabled
+	p.LanAccess.Domain = c.LanAccess.Domain
 	p.WebRTC.UDPPort = c.WebRTC.UDPPort
 	p.WebRTC.PublicIP = c.WebRTC.PublicIP
 	return p
@@ -107,17 +105,17 @@ func validateConfig(p *configPayload) string {
 			return "custom DDNS needs an update URL"
 		}
 	}
-	if p.LanDNS.Enabled {
-		if p.TLS.Domain == "" && p.DDNS.Domain == "" {
-			return "LAN DNS needs a domain (set one under HTTPS or DDNS)"
-		}
-		if _, err := landns.NormalizeUpstreams(p.LanDNS.Upstream); err != nil {
-			return "LAN DNS upstream resolvers: " + err.Error()
-		}
-		if s := strings.TrimSpace(p.LanDNS.AnswerIP); s != "" {
-			if ip := net.ParseIP(s); ip == nil || ip.To4() == nil {
-				return "LAN DNS answer IP must be an IPv4 address (or blank for auto)"
-			}
+	if p.LanAccess.Enabled {
+		domain := strings.TrimSpace(p.LanAccess.Domain)
+		switch {
+		case domain == "":
+			return "home network access needs its own domain (create a second free DuckDNS subdomain)"
+		case strings.EqualFold(domain, p.TLS.Domain):
+			return "the home-access domain must be different from the main domain"
+		case p.TLS.Domain == "" || (p.TLS.Mode != "auto" && p.TLS.Mode != "acme"):
+			return "home network access requires HTTPS with a domain (Let's Encrypt)"
+		case p.DDNS.Token == "":
+			return "home network access needs the DuckDNS token (set under Dynamic DNS)"
 		}
 	}
 	return ""
@@ -146,20 +144,19 @@ func (s *Server) handleAdminGetConfig(w http.ResponseWriter, r *http.Request) {
 	s.cfgMu.Lock()
 	defer s.cfgMu.Unlock()
 	writeJSON(w, 200, map[string]any{
-		"config":        s.configSnapshot(),
-		"config_path":   s.Config.Path(),
-		"lan_ip":        lanIPString(),
-		"landns_status": s.lanDNSStatus(),
+		"config":           s.configSnapshot(),
+		"config_path":      s.Config.Path(),
+		"lan_ip":           lanIPString(),
+		"lanaccess_status": s.lanAccessStatus(),
 	})
 }
 
-// lanDNSStatus reports whether the LAN DNS server is running and why not.
-func (s *Server) lanDNSStatus() map[string]any {
-	if s.LanDNS == nil {
-		return map[string]any{"active": false, "error": ""}
+// lanAccessStatus reports the lan-access runner state for the admin UI.
+func (s *Server) lanAccessStatus() map[string]any {
+	if s.LanAccess == nil {
+		return map[string]any{"active": false}
 	}
-	active, lastErr := s.LanDNS.Status()
-	return map[string]any{"active": active, "error": lastErr}
+	return s.LanAccess.Status()
 }
 
 func lanIPString() string {
@@ -196,10 +193,14 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	c.DDNS.Token = p.DDNS.Token
 	c.DDNS.URL = p.DDNS.URL
 	c.DDNS.IntervalMinutes = p.DDNS.IntervalMinutes
-	c.LanDNS.Enabled = p.LanDNS.Enabled
-	c.LanDNS.Upstream = p.LanDNS.Upstream
-	c.LanDNS.AnswerIP = p.LanDNS.AnswerIP
-	lanDNSCfg := c.LanDNS
+	c.LanAccess.Enabled = p.LanAccess.Enabled
+	c.LanAccess.Domain = strings.TrimSpace(p.LanAccess.Domain)
+	lanToken := c.LanAccess.Token
+	if lanToken == "" {
+		lanToken = c.DDNS.Token
+	}
+	lanIP := c.LanAccess.LanIP
+	dataDir := c.ResolvedDataDir
 	c.WebRTC.UDPPort = p.WebRTC.UDPPort
 	c.WebRTC.PublicIP = p.WebRTC.PublicIP
 	err := c.Save()
@@ -229,17 +230,16 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 			s.DDNS.Stop()
 		}
 	}
-	if s.LanDNS != nil {
-		if p.LanDNS.Enabled {
-			lcfg, err := landns.FromAppConfig(lanDNSCfg, p.DDNS.Domain, p.TLS.Domain)
-			if err == nil {
-				err = s.LanDNS.Set(lcfg)
-			}
-			if err != nil {
-				warnings = append(warnings, "LAN DNS could not start: "+err.Error())
+	if s.LanAccess != nil {
+		if p.LanAccess.Enabled {
+			if err := s.LanAccess.Set(lanaccess.Config{
+				Domain: p.LanAccess.Domain, Token: lanToken,
+				LanIP: lanIP, DataDir: dataDir,
+			}); err != nil {
+				warnings = append(warnings, "Home network access could not start: "+err.Error())
 			}
 		} else {
-			s.LanDNS.Stop()
+			s.LanAccess.Stop()
 		}
 	}
 
@@ -247,6 +247,6 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 		"config":           p,
 		"restart_required": restartRequired(old, p),
 		"warnings":         warnings,
-		"landns_status":    s.lanDNSStatus(),
+		"lanaccess_status": s.lanAccessStatus(),
 	})
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/skyle/talaria/internal/config"
 	"github.com/skyle/talaria/internal/ddns"
 	"github.com/skyle/talaria/internal/gateway"
+	"github.com/skyle/talaria/internal/lanaccess"
 	"github.com/skyle/talaria/internal/landns"
 	"github.com/skyle/talaria/internal/store"
 )
@@ -28,9 +29,14 @@ type Server struct {
 	DDNS *ddns.Runner
 	// LanDNS lets the admin config endpoint hot-apply LAN DNS changes.
 	LanDNS *landns.Runner
+	// LanAccess serves the lan domain (cert + redirect target) for devices
+	// stuck behind broken router NAT loopback.
+	LanAccess *lanaccess.Runner
 
 	// cfgMu serializes admin edits to Config.
 	cfgMu sync.Mutex
+	// pubIPCache backs hairpin detection in lanRedirect.
+	pubIPCache
 }
 
 type apiError struct {

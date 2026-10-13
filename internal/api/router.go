@@ -12,7 +12,10 @@ func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 
 	// --- public (no auth) ---
+	// healthz allows cross-origin reads: the lan-access probe page fetches it
+	// from the main domain's origin to test reachability.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		writeJSON(w, 200, map[string]string{"status": "ok", "version": s.Version})
 	})
 	mux.HandleFunc("GET /api/v1/setup/status", s.handleSetupStatus)
@@ -83,7 +86,7 @@ func (s *Server) Router() http.Handler {
 	// Embedded SPA with index.html fallback for client-side routes.
 	mux.Handle("/", web.SPAHandler())
 
-	return securityHeaders(mux)
+	return securityHeaders(s.lanRedirect(mux))
 }
 
 func (s *Server) adminOnly(h http.HandlerFunc) http.HandlerFunc {
