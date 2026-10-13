@@ -1,7 +1,7 @@
 // Lightbox: full-screen image viewer with zoom. Scroll wheel or pinch to
 // zoom, drag to pan, double-tap/double-click to toggle 1x / 2.5x, +/- keys,
 // Esc to close.
-import { useEffect, useRef, useState, type PointerEvent as RPointerEvent, type WheelEvent as RWheelEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { Download, Minus, Plus, RotateCcw, X } from 'lucide-react'
 
 const MIN = 1
@@ -15,6 +15,24 @@ export function Lightbox({ url, alt, onClose }: { url: string; alt?: string; onC
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
   const lastTap = useRef(0)
   const moved = useRef(false)
+  const box = useRef<HTMLDivElement>(null)
+  const scaleRef = useRef(scale)
+  scaleRef.current = scale
+
+  // React registers wheel listeners as passive, which blocks preventDefault,
+  // so the page behind would scroll. Attach a non-passive one by hand.
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+      zoomTo(scaleRef.current * factor, rel(e))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -40,7 +58,7 @@ export function Lightbox({ url, alt, onClose }: { url: string; alt?: string; onC
     }
     if (around) {
       // Keep the point under the cursor fixed while zooming.
-      const k = s / scale
+      const k = s / scaleRef.current
       setPos((p) => ({ x: around.x - (around.x - p.x) * k, y: around.y - (around.y - p.y) * k }))
     }
     setScale(s)
@@ -54,12 +72,6 @@ export function Lightbox({ url, alt, onClose }: { url: string; alt?: string; onC
   // Coordinates relative to the viewport centre (where the image is anchored).
   function rel(e: { clientX: number; clientY: number }) {
     return { x: e.clientX - window.innerWidth / 2, y: e.clientY - window.innerHeight / 2 }
-  }
-
-  function onWheel(e: RWheelEvent) {
-    e.preventDefault()
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-    zoomTo(scale * factor, rel(e))
   }
 
   function onPointerDown(e: RPointerEvent) {
@@ -114,8 +126,8 @@ export function Lightbox({ url, alt, onClose }: { url: string; alt?: string; onC
 
   return (
     <div
+      ref={box}
       className="fixed inset-0 z-50 select-none overflow-hidden bg-black/90"
-      onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

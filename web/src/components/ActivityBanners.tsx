@@ -75,6 +75,7 @@ function CallBanner({ channelId }: { channelId: string }) {
 function ListenBanner({ st, meId }: { st: ListenState; meId: string }) {
   const session = st.session!
   const channelId = st.channel_id
+  const location = useLocation()
   const slot = useListen((s) => s.slot)
   const overlayOpen = useApp((s) => s.overlayOpen)
   const users = useApp((s) => s.users)
@@ -83,7 +84,10 @@ function ListenBanner({ st, meId }: { st: ListenState; meId: string }) {
   const { play, pause, leave } = useListen.getState()
   const isHost = session.host_user_id === meId
   const current = st.items.find((i) => i.id === session.current_item_id) ?? null
-  const inView = !!slot && slot.channelId === channelId && !overlayOpen
+  // In view when the player slot is on screen, or when you are already on
+  // the channel page (an empty queue has no slot yet) with no overlay open.
+  const onChannelPage = location.pathname.endsWith(`/${channelId}`)
+  const inView = !overlayOpen && ((!!slot && slot.channelId === channelId) || onChannelPage)
 
   // Keep the clock moving while the bar is up.
   const [, tick] = useState(0)
