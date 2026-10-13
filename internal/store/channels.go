@@ -107,6 +107,49 @@ func (s *Store) GetOrCreateDM(ctx context.Context, a, b string) (*model.Channel,
 	return c, true, tx.Commit()
 }
 
+// CreateGroupDM creates a multi-person chat. It carries no dm_key, so it
+// never collides with (or hijacks) the private 1:1 channel of any pair.
+func (s *Store) CreateGroupDM(ctx context.Context, userIDs []string) (*model.Channel, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	c := &model.Channel{ID: NewID(), Kind: model.ChannelDM, CreatedAt: now()}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO channels (id, kind, topic, position, created_at)
+		VALUES (?, ?, '', 0, ?)`, c.ID, c.Kind, c.CreatedAt); err != nil {
+		return nil, err
+	}
+	for _, uid := range userIDs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO dm_participants (channel_id, user_id)
+			VALUES (?, ?)`, c.ID, uid); err != nil {
+			return nil, err
+		}
+	}
+	return c, tx.Commit()
+}
+
+// IsPairDM reports whether the channel is a 1:1 chat (created with a dm_key),
+// as opposed to a multi-person chat.
+func (s *Store) IsPairDM(ctx context.Context, channelID string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channels
+		WHERE id = ? AND dm_key IS NOT NULL`, channelID).Scan(&n)
+	return n > 0, err
+}
+
+func (s *Store) AddDMParticipant(ctx context.Context, channelID, userID string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO dm_participants (channel_id, user_id)
+		VALUES (?, ?)`, channelID, userID)
+	return err
+}
+
+func (s *Store) RemoveDMParticipant(ctx context.Context, channelID, userID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM dm_participants
+		WHERE channel_id = ? AND user_id = ?`, channelID, userID)
+	return err
+}
+
 func (s *Store) ListDMChannels(ctx context.Context, userID string) ([]*model.Channel, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT c.id, c.kind, c.group_id, c.name, c.topic, c.position, c.created_at
 		FROM channels c JOIN dm_participants p ON p.channel_id = c.id

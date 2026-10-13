@@ -286,6 +286,7 @@ export function displayName(users: Record<string, User>, id: string): string {
 }
 
 export function dmTitle(ch: Channel, meId: string, users: Record<string, User>): string {
+  if (ch.name) return ch.name
   const others = (ch.participants ?? []).filter((p) => p.id !== meId)
   if (others.length) return others.map((p) => p.display_name || p.username).join(', ')
   return 'Direct message'

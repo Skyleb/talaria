@@ -551,6 +551,7 @@ function DMList() {
         {sorted.map((cid) => {
           const c = channels[cid]
           if (!c || !me) return null
+          const isGroupChat = (c.participants?.length ?? 0) > 2 || !!c.name
           const other = dmOther(c, me.id)
           const otherUser = other ? users[other.id] ?? other : undefined
           const latest = latestIds[cid]
@@ -565,7 +566,13 @@ function DMList() {
                 unread && channelId !== cid && 'font-semibold text-ink',
               )}
             >
-              <Avatar user={otherUser} size={28} online={otherUser ? !!online[otherUser.id] : undefined} />
+              {isGroupChat ? (
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-bg-3 text-ink-1">
+                  <Users size={15} />
+                </span>
+              ) : (
+                <Avatar user={otherUser} size={28} online={otherUser ? !!online[otherUser.id] : undefined} />
+              )}
               <span className="truncate">{dmTitle(c, me.id, users)}</span>
               <span className="ml-auto flex items-center gap-1.5">
                 {(calls[cid]?.length ?? 0) > 0 && <Volume2 size={14} className="text-success" />}

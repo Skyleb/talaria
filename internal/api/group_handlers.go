@@ -179,8 +179,12 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	ch, err := s.Store.ChannelByID(r.Context(), r.PathValue("id"))
-	if err != nil || ch.Kind == model.ChannelDM {
+	if err != nil {
 		notFound(w)
+		return
+	}
+	if ch.Kind == model.ChannelDM {
+		s.updateDMChannel(w, r, ch)
 		return
 	}
 	if _, _, ok := s.requireGroupRole(w, r, ch.GroupID, model.RoleOwner, model.RoleAdmin); !ok {

@@ -345,6 +345,7 @@ function handleEvent(t: string, d: any) {
         const { [d.channel_id]: _, ...channels } = s.channels
         return {
           channels,
+          dmChannelIds: s.dmChannelIds.filter((id) => id !== d.channel_id),
           groupChannelIds: d.group_id
             ? {
                 ...s.groupChannelIds,

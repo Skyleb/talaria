@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router'
-import { Hash, Phone, Users } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router'
+import { Hash, LogOut, Pencil, Phone, UserPlus, Users } from 'lucide-react'
+import { api } from '../lib/api'
 import { dmTitle, displayName, useApp } from '../store'
 import { useCall } from '../call'
 import { PageHeader } from './AppShell'
@@ -8,7 +9,7 @@ import { MessageList } from '../components/chat/MessageList'
 import { Composer } from '../components/chat/Composer'
 import { CallPanel } from '../components/call/CallPanel'
 import { Avatar } from '../components/Avatar'
-import { cx } from '../components/ui'
+import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
 import type { Message } from '../lib/types'
 
 export default function ChatPage({ onMenu }: { onMenu: () => void }) {
@@ -21,6 +22,8 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
   const latest = useApp((s) => s.latestIds[channelId])
   const [membersOpen, setMembersOpen] = useState(false)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [chatSettingsOpen, setChatSettingsOpen] = useState(false)
 
   useEffect(() => {
     setReplyTo(null)
@@ -47,6 +50,7 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
 
   const isDM = channel.kind === 'dm'
   const title = isDM ? dmTitle(channel, me.id, users) : `${channel.name}`
+  const isGroupChat = isDM && ((channel.participants?.length ?? 0) > 2 || !!channel.name)
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -59,6 +63,24 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
           right={
             <>
               <StartCallButton channelId={channelId} />
+              {isDM && (
+                <button
+                  className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
+                  title="Add people to this chat"
+                  onClick={() => setAddOpen(true)}
+                >
+                  <UserPlus size={18} />
+                </button>
+              )}
+              {isGroupChat && (
+                <button
+                  className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
+                  title="Chat settings"
+                  onClick={() => setChatSettingsOpen(true)}
+                >
+                  <Pencil size={18} />
+                </button>
+              )}
               {!isDM && (
                 <button
                   className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
@@ -77,7 +99,143 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
         <Composer channelId={channelId} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
       </div>
       {!isDM && groupId && <MemberPanel groupId={groupId} open={membersOpen} onClose={() => setMembersOpen(false)} />}
+      {isDM && <AddPeopleModal open={addOpen} onClose={() => setAddOpen(false)} channelId={channelId} />}
+      {isGroupChat && (
+        <ChatSettingsModal open={chatSettingsOpen} onClose={() => setChatSettingsOpen(false)} channelId={channelId} />
+      )}
     </div>
+  )
+}
+
+// AddPeopleModal: pick friends to bring into this chat. Adding to a 1:1
+// starts a new chat (the private history stays private), so we navigate.
+function AddPeopleModal({ open, onClose, channelId }: { open: boolean; onClose: () => void; channelId: string }) {
+  const channel = useApp((s) => s.channels[channelId])
+  const friends = useApp((s) => s.friends)
+  const users = useApp((s) => s.users)
+  const navigate = useNavigate()
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const participantIds = new Set((channel?.participants ?? []).map((p) => p.id))
+  const candidates = friends
+    .filter((f) => f.friendship.status === 'accepted' && !participantIds.has(f.user_id))
+    .sort((a, b) => displayName(users, a.user_id).localeCompare(displayName(users, b.user_id)))
+
+  async function add(userId: string) {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await api.post<{ channel: { id: string } }>(
+        `/api/v1/channels/${channelId}/participants`,
+        { user_id: userId },
+      )
+      onClose()
+      if (res.channel.id !== channelId) navigate(`/app/dm/${res.channel.id}`)
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not add them')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add people">
+      {participantIds.size === 2 && (
+        <p className="mb-3 text-sm text-ink-1">
+          This starts a new chat with everyone — your direct messages stay just between you two.
+        </p>
+      )}
+      <div className="max-h-72 space-y-1 overflow-y-auto">
+        {candidates.length === 0 && (
+          <p className="text-sm text-ink-2">All of your friends are already here.</p>
+        )}
+        {candidates.map((f) => {
+          const u = users[f.user_id]
+          return (
+            <button
+              key={f.user_id}
+              disabled={busy}
+              onClick={() => add(f.user_id)}
+              className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-bg-3/60 disabled:opacity-50"
+            >
+              <Avatar user={u} size={32} />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+                {displayName(users, f.user_id)}
+              </span>
+              <UserPlus size={16} className="text-ink-2" />
+            </button>
+          )
+        })}
+      </div>
+      <ErrorText>{error}</ErrorText>
+    </Modal>
+  )
+}
+
+// ChatSettingsModal: rename or leave a multi-person chat.
+function ChatSettingsModal({ open, onClose, channelId }: { open: boolean; onClose: () => void; channelId: string }) {
+  const channel = useApp((s) => s.channels[channelId])
+  const navigate = useNavigate()
+  const [name, setName] = useState('')
+  const [msg, setMsg] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      setName(channel?.name ?? '')
+      setMsg('')
+      setError('')
+    }
+  }, [open, channel?.name])
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setMsg('')
+    try {
+      await api.patch(`/api/v1/channels/${channelId}`, { name })
+      setMsg('Saved.')
+    } catch (e2: any) {
+      setError(e2?.message ?? 'Could not rename')
+    }
+  }
+
+  async function leave() {
+    if (!confirm('Leave this chat? You can be added back by anyone in it.')) return
+    try {
+      await api.del(`/api/v1/channels/${channelId}/participants/me`)
+      onClose()
+      navigate('/app/friends')
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not leave')
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Chat settings">
+      <form className="space-y-3" onSubmit={save}>
+        <div>
+          <Label>Chat name</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={64}
+            placeholder="Leave blank to show everyone's names"
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <Button type="submit">Save</Button>
+          {msg && <span className="text-sm text-success">{msg}</span>}
+        </div>
+      </form>
+      <ErrorText>{error}</ErrorText>
+      <div className="mt-5 border-t border-edge pt-4">
+        <Button variant="danger" className="w-full" onClick={leave}>
+          <LogOut size={16} /> Leave chat
+        </Button>
+      </div>
+    </Modal>
   )
 }
 

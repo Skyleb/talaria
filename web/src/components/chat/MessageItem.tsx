@@ -44,6 +44,15 @@ export function MessageItem({
     await api.del(`/api/v1/messages/${m.id}`).catch(() => {})
   }
 
+  // System lines ("X added Y") render as a quiet divider, not a bubble.
+  if (m.kind === 'system') {
+    return (
+      <p className="mt-2 px-2 text-center text-xs italic text-ink-2" title={formatDateTime(m.created_at)}>
+        {m.content}
+      </p>
+    )
+  }
+
   return (
     <div
       className={cx(
