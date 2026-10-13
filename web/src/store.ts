@@ -34,10 +34,14 @@ interface AppState {
 
   theme: Theme
   palette: string
+  // profileUserId drives the global user profile card (open from anywhere).
+  profileUserId: string | null
 
   // actions
   setTheme: (t: Theme) => void
   setPalette: (p: string) => void
+  openProfile: (userId: string) => void
+  closeProfile: () => void
   setMe: (u: User | null) => void
   setGatewayStatus: (s: GatewayStatus) => void
   applyReady: (p: ReadyPayload) => void
@@ -82,6 +86,10 @@ export const useApp = create<AppState>((set, get) => ({
 
   theme: (localStorage.getItem('talaria-theme') as Theme) || 'system',
   palette: localStorage.getItem('talaria-palette') || DEFAULT_PALETTE,
+  profileUserId: null,
+
+  openProfile: (userId) => set({ profileUserId: userId }),
+  closeProfile: () => set({ profileUserId: null }),
 
   setTheme: (t) => {
     localStorage.setItem('talaria-theme', t)

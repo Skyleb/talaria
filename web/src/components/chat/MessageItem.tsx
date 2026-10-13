@@ -20,6 +20,7 @@ export function MessageItem({
 }) {
   const me = useApp((s) => s.me)
   const users = useApp((s) => s.users)
+  const openProfile = useApp((s) => s.openProfile)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
   const [actionsOpen, setActionsOpen] = useState(false)
@@ -66,14 +67,22 @@ export function MessageItem({
       )}
       <div className="flex gap-2.5">
         <div className="w-9 shrink-0 pt-0.5">
-          {!grouped && <Avatar user={author} size={36} />}
+          {!grouped && (
+            <button title="View profile" onClick={() => openProfile(m.author_id)}>
+              <Avatar user={author} size={36} />
+            </button>
+          )}
         </div>
         <div className="min-w-0 flex-1">
           {!grouped && (
             <div className="flex items-baseline gap-2">
-              <span className="text-sm font-semibold text-ink">
+              <button
+                className="text-sm font-semibold text-ink hover:underline"
+                title="View profile"
+                onClick={() => openProfile(m.author_id)}
+              >
                 {author?.display_name ?? displayName(users, m.author_id)}
-              </span>
+              </button>
               <span className="text-[11px] text-ink-2" title={formatDateTime(m.created_at)}>
                 {formatTime(m.created_at)}
               </span>

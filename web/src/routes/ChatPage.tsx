@@ -130,6 +130,7 @@ function MemberPanel({ groupId, open, onClose }: { groupId: string; open: boolea
   const members = useApp((s) => s.groupMembers[groupId]) ?? []
   const users = useApp((s) => s.users)
   const online = useApp((s) => s.online)
+  const openProfile = useApp((s) => s.openProfile)
 
   const sorted = useMemo(() => {
     return [...members].sort((a, b) => {
@@ -164,7 +165,12 @@ function MemberPanel({ groupId, open, onClose }: { groupId: string; open: boolea
           {sorted.map((m) => {
             const u = users[m.user_id]
             return (
-              <div key={m.user_id} className="flex items-center gap-2 rounded-lg px-2 py-1.5">
+              <button
+                key={m.user_id}
+                onClick={() => openProfile(m.user_id)}
+                title="View profile"
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-bg-3/60"
+              >
                 <Avatar user={u} size={30} online={!!online[m.user_id]} />
                 <div className="min-w-0">
                   <div className={cx('truncate text-sm', online[m.user_id] ? 'text-ink' : 'text-ink-2')}>
@@ -175,7 +181,7 @@ function MemberPanel({ groupId, open, onClose }: { groupId: string; open: boolea
                   </div>
                   {u?.status_text && <div className="truncate text-xs text-ink-2">{u.status_text}</div>}
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>

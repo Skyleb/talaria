@@ -7,6 +7,7 @@ import { useCall } from '../call'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
 import { GlobalCall } from '../components/call/CallPanel'
+import { UserProfileModal } from '../components/UserProfileModal'
 import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
 import FriendsPage from './FriendsPage'
 import ChatPage from './ChatPage'
@@ -56,6 +57,7 @@ export default function AppShell() {
         </Routes>
       </main>
       <GlobalCall />
+      <UserProfileModal />
     </div>
   )
 }
