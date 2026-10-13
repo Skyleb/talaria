@@ -81,6 +81,8 @@ func (s *Server) Router() http.Handler {
 	authed.HandleFunc("GET /api/v1/listen/search", s.handleListenSearch)
 	authed.HandleFunc("GET /api/v1/gifs/status", s.handleGifStatus)
 	authed.HandleFunc("GET /api/v1/search", s.handleSearch)
+	authed.HandleFunc("GET /api/v1/media", s.handleListMedia)
+	authed.HandleFunc("GET /api/v1/media/uploaders", s.handleMediaUploaders)
 	authed.HandleFunc("DELETE /api/v1/playlists/{id}", s.handleDeletePlaylist)
 	authed.HandleFunc("PUT /api/v1/channels/{id}/mute", s.handleMuteChannel)
 	authed.HandleFunc("DELETE /api/v1/channels/{id}/mute", s.handleUnmuteChannel)
@@ -106,10 +108,12 @@ func (s *Server) Router() http.Handler {
 
 	// File serving authenticates via cookie but lives outside /api for clean URLs.
 	authed.HandleFunc("GET /files/{attachmentId}/{filename}", s.handleServeFile)
+	authed.HandleFunc("GET /thumbs/{attachmentId}", s.handleServeThumb)
 	authed.HandleFunc("GET /avatars/{fileId}", s.handleServeAvatar)
 
 	mux.Handle("/api/v1/", s.Auth.Middleware(authed))
 	mux.Handle("/files/", s.Auth.Middleware(authed))
+	mux.Handle("/thumbs/", s.Auth.Middleware(authed))
 	mux.Handle("/avatars/", s.Auth.Middleware(authed))
 
 	// Embedded SPA with index.html fallback for client-side routes.

@@ -73,6 +73,12 @@ export function fileUrl(att: import('./types').Attachment): string {
   return `/files/${att.id}/${encodeURIComponent(att.file_name)}`
 }
 
+// thumbUrl: an aspect-preserving thumbnail of an image attachment (fits in
+// size×size). Same access rule as the file; non-images 404.
+export function thumbUrl(att: import('./types').Attachment, size = 256): string {
+  return `/thumbs/${att.id}?s=${size}`
+}
+
 export function avatarUrl(fileId: string, size = 128): string {
   return `/avatars/${fileId}?s=${size}`
 }

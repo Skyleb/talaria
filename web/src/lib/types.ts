@@ -66,6 +66,22 @@ export interface Attachment {
   size_bytes: number
 }
 
+// MediaItem: one entry in the media view — an attachment plus where it lives.
+export interface MediaItem extends Attachment {
+  channel_id: string
+  source: 'message' | 'queue'
+}
+
+export type MediaType = '' | 'image' | 'video' | 'audio' | 'file'
+export type MediaSort = 'newest' | 'oldest' | 'largest' | 'name'
+
+export interface MediaResponse {
+  items: MediaItem[]
+  next_cursor: string
+  has_more: boolean
+  users: Record<string, User>
+}
+
 export interface Message {
   id: string
   channel_id: string

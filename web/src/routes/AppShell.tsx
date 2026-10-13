@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { BellOff, Hash, Menu, Moon, NotebookPen, Phone, PhoneOff, Plus, Search, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
+import { BellOff, Hash, Images, Menu, Moon, NotebookPen, Phone, PhoneOff, Plus, Search, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
 import { setAppBadge, syncPush } from '../lib/notifications'
 import { dmOther, dmTitle, displayName, isNotesChat, useApp } from '../store'
@@ -18,6 +18,7 @@ import { Button, cx, ErrorText, Input, Label, Logo, Modal } from '../components/
 import FriendsPage from './FriendsPage'
 import ChatPage from './ChatPage'
 import SettingsPage from './SettingsPage'
+import MediaPage from './MediaPage'
 import type { Channel, Group } from '../lib/types'
 
 export default function AppShell() {
@@ -28,15 +29,17 @@ export default function AppShell() {
   const navigate = useNavigate()
   const unreadTotal = useApp(selectUnreadTotal)
 
-  // Settings is an overlay: the page underneath stays mounted (so calls and
-  // listening sessions keep going), and the router renders that page from
-  // the last non-settings location.
+  // Settings and Media are overlays: the page underneath stays mounted (so
+  // calls and listening sessions keep going), and the router renders that
+  // page from the last non-overlay location.
   const isSettings = location.pathname.startsWith('/app/settings')
-  const bgRef = useRef(isSettings ? { ...location, pathname: '/app/friends', search: '', hash: '' } : location)
-  if (!isSettings) bgRef.current = location
+  const isMedia = location.pathname.startsWith('/app/media')
+  const isOverlay = isSettings || isMedia
+  const bgRef = useRef(isOverlay ? { ...location, pathname: '/app/friends', search: '', hash: '' } : location)
+  if (!isOverlay) bgRef.current = location
   useEffect(() => {
-    useApp.setState({ overlayOpen: isSettings })
-  }, [isSettings])
+    useApp.setState({ overlayOpen: isOverlay })
+  }, [isOverlay])
 
   // Close the drawer on navigation (mobile).
   useEffect(() => setLeftOpen(false), [location.pathname])
@@ -102,6 +105,11 @@ export default function AppShell() {
       {isSettings && (
         <div className="absolute inset-0 z-[35] flex bg-bg-0">
           <SettingsPage onClose={() => navigate(bgRef.current)} />
+        </div>
+      )}
+      {isMedia && (
+        <div className="absolute inset-0 z-[35] flex bg-bg-0">
+          <MediaPage onClose={() => navigate(bgRef.current)} />
         </div>
       )}
       </div>
@@ -335,6 +343,13 @@ function GroupChannelList({ groupId }: { groupId: string }) {
           onClick={() => useApp.getState().openSearch({ scope: 'group', id: groupId })}
         >
           <Search size={18} />
+        </button>
+        <button
+          title="Media shared in this group"
+          className="rounded-lg p-1 text-ink-1 hover:bg-bg-3 hover:text-ink"
+          onClick={() => navigate(`/app/media?scope=group&id=${encodeURIComponent(groupId)}`)}
+        >
+          <Images size={18} />
         </button>
         <button
           title="Invite people"
@@ -616,6 +631,13 @@ function DMList() {
         >
           <Search size={18} />
         </button>
+        <button
+          title="All media you can see"
+          className="rounded-lg p-1 text-ink-1 hover:bg-bg-3 hover:text-ink"
+          onClick={() => navigate('/app/media?scope=all')}
+        >
+          <Images size={18} />
+        </button>
       </div>
       <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
         <button
@@ -735,6 +757,9 @@ function SelfBar() {
       >
         {dark ? <Sun size={18} /> : <Moon size={18} />}
       </button>
+      <Link to="/app/media?scope=all" title="All media" className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink">
+        <Images size={18} />
+      </Link>
       <Link to="/app/settings" title="Settings" className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink">
         <Settings size={18} />
       </Link>

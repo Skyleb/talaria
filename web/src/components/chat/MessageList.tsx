@@ -34,11 +34,15 @@ export function MessageList({
   const resetChannel = useApp((s) => s.resetChannel)
   const clearHighlight = useApp((s) => s.clearHighlight)
   const containerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [loadingNewer, setLoadingNewer] = useState(false)
   const pinnedToBottom = useRef(true)
   const prevHeight = useRef(0)
   const prevChannel = useRef('')
+  const loadingMoreRef = useRef(false)
+  loadingMoreRef.current = loadingMore
+  const ready = loaded || !!messages
 
   // Track whether the user is near the bottom.
   function onScroll() {
@@ -68,6 +72,11 @@ export function MessageList({
       prevChannel.current = channelId
       if (!hasMoreAfter) el.scrollTop = el.scrollHeight
       pinnedToBottom.current = !hasMoreAfter
+      // Images and embeds settle after this effect; re-pin after first paint
+      // (the resize observer below handles everything that loads later).
+      requestAnimationFrame(() => {
+        if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
+      })
       return
     }
     if (loadingMore && prevHeight.current) {
@@ -77,6 +86,21 @@ export function MessageList({
       el.scrollTop = el.scrollHeight
     }
   }, [messages, channelId, loadingMore])
+
+  // GIFs, images without known dimensions, videos and link embeds grow the
+  // content after it renders. While the user is at the bottom, follow that
+  // growth so a freshly opened chat ends on the latest message rather than
+  // drifting up as media loads.
+  useEffect(() => {
+    const el = containerRef.current
+    const content = contentRef.current
+    if (!el || !content) return
+    const ro = new ResizeObserver(() => {
+      if (pinnedToBottom.current && !loadingMoreRef.current) el.scrollTop = el.scrollHeight
+    })
+    ro.observe(content)
+    return () => ro.disconnect()
+  }, [channelId, ready])
 
   // Scroll a jumped-to message into view and flash it briefly.
   useEffect(() => {
@@ -89,7 +113,7 @@ export function MessageList({
     return () => clearTimeout(t)
   }, [highlightId, messages, clearHighlight])
 
-  if (!loaded && !messages) {
+  if (!ready) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Spinner />
@@ -102,8 +126,9 @@ export function MessageList({
     <div
       ref={containerRef}
       onScroll={onScroll}
-      className="flex-1 overflow-y-auto overscroll-contain px-2 pb-2 pt-4 sm:px-4"
+      className="flex-1 overflow-y-auto overscroll-contain px-2 pb-2 pt-4 [overflow-anchor:none] sm:px-4"
     >
+      <div ref={contentRef}>
       {loadingMore && (
         <div className="flex justify-center py-2">
           <Spinner className="h-4 w-4" />
@@ -143,6 +168,7 @@ export function MessageList({
           </button>
         </div>
       )}
+      </div>
     </div>
   )
 }

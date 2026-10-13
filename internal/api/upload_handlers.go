@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"image"
 	"io"
 	"net/http"
@@ -163,38 +164,9 @@ type multipartFilePart struct {
 func (s *Server) handleServeFile(w http.ResponseWriter, r *http.Request) {
 	me := auth.UserFrom(r.Context())
 	att, err := s.Store.AttachmentByID(r.Context(), r.PathValue("attachmentId"))
-	if err != nil {
+	if err != nil || !s.canAccessAttachment(r.Context(), me.ID, att) {
 		notFound(w)
 		return
-	}
-	// Access: uploader always; otherwise member of the message's channel.
-	if att.UploaderID != me.ID {
-		channelID := ""
-		if att.MessageID != "" {
-			m, err := s.Store.MessageByID(r.Context(), att.MessageID)
-			if err != nil {
-				notFound(w)
-				return
-			}
-			channelID = m.ChannelID
-		} else if cid, ok := s.Store.PlaylistChannelForAttachment(r.Context(), att.ID); ok {
-			// A listening-queue upload: members of that chat may stream it.
-			channelID = cid
-		}
-		if channelID == "" {
-			notFound(w)
-			return
-		}
-		ch, err := s.Store.ChannelByID(r.Context(), channelID)
-		if err != nil {
-			notFound(w)
-			return
-		}
-		ok, err := s.Store.IsChannelMember(r.Context(), ch, me.ID)
-		if err != nil || !ok {
-			notFound(w)
-			return
-		}
 	}
 	fileRec, err := s.Store.FileByID(r.Context(), att.FileID)
 	if err != nil {
@@ -221,6 +193,35 @@ func (s *Server) handleServeFile(w http.ResponseWriter, r *http.Request) {
 	}
 	// ServeContent gives us Range requests (video/audio seeking) for free.
 	http.ServeContent(w, r, "", time.UnixMilli(fileRec.CreatedAt), blobFile)
+}
+
+// canAccessAttachment is the one access rule for attachment bytes and
+// thumbnails: the uploader always; otherwise a member of the channel the
+// attachment was posted in (via its message, or the listening queue that
+// references it).
+func (s *Server) canAccessAttachment(ctx context.Context, userID string, att *model.Attachment) bool {
+	if att.UploaderID == userID {
+		return true
+	}
+	channelID := ""
+	if att.MessageID != "" {
+		m, err := s.Store.MessageByID(ctx, att.MessageID)
+		if err != nil {
+			return false
+		}
+		channelID = m.ChannelID
+	} else if cid, ok := s.Store.PlaylistChannelForAttachment(ctx, att.ID); ok {
+		channelID = cid
+	}
+	if channelID == "" {
+		return false
+	}
+	ch, err := s.Store.ChannelByID(ctx, channelID)
+	if err != nil {
+		return false
+	}
+	ok, err := s.Store.IsChannelMember(ctx, ch, userID)
+	return err == nil && ok
 }
 
 // handleServeAvatar serves (and lazily resizes) avatar/icon images by file id.

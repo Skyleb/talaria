@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
-import { Bell, BellOff, Hash, Headphones, LogOut, Pencil, Phone, Search, UserPlus, Users } from 'lucide-react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { Bell, BellOff, Hash, Headphones, Images, LogOut, Pencil, Phone, Search, UserPlus, Users } from 'lucide-react'
 import { api } from '../lib/api'
 import { dmTitle, displayName, useApp, isNotesChat } from '../store'
 import { useCall } from '../call'
@@ -83,6 +83,13 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
               >
                 <Search size={18} />
               </button>
+              <Link
+                to={`/app/media?scope=channel&id=${encodeURIComponent(channelId)}`}
+                className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
+                title="Media shared in this chat"
+              >
+                <Images size={18} />
+              </Link>
               {!isNotes && <StartCallButton channelId={channelId} />}
               <ListenButton channelId={channelId} />
               {!isNotes && <MuteButton channelId={channelId} />}

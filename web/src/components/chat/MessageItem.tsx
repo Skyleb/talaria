@@ -142,7 +142,7 @@ export function MessageItem({
             <>
               {imageURL ? (
                 <>
-                  <button onClick={() => setLightbox(true)} className="mt-1 block w-fit" title="View full size">
+                  <button onClick={() => setLightbox(true)} className="mt-1 block min-h-32 w-fit" title="View full size">
                     <img src={imageURL} alt="GIF" loading="lazy" className="max-h-64 max-w-full rounded-lg bg-bg-2" />
                   </button>
                   {lightbox && <Lightbox url={imageURL} alt="GIF" onClose={() => setLightbox(false)} />}

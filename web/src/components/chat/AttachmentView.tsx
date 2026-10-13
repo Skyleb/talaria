@@ -9,11 +9,14 @@ export function AttachmentView({ attachment: a }: { attachment: Attachment }) {
   const url = fileUrl(a)
   if (a.mime.startsWith('image/')) return <ImageAttachment a={a} url={url} />
   if (a.mime.startsWith('video/')) {
+    // Reserve the box before metadata arrives so the chat doesn't jump.
+    const ratio = a.width && a.height ? `${a.width} / ${a.height}` : '16 / 9'
     return (
       <video
         controls
         preload="metadata"
-        className="mt-1 max-h-80 max-w-full rounded-lg border border-edge bg-black sm:max-w-md"
+        className="mt-1 w-full max-h-80 max-w-full rounded-lg border border-edge bg-black sm:max-w-md"
+        style={{ aspectRatio: ratio }}
         src={url}
       />
     )
