@@ -470,15 +470,23 @@ export const useCall = create<CallState>((set, get) => ({
       return
     }
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      // Ask for tab/system audio too (Chrome and Edge offer it; others
+      // quietly give video only). Keep it raw: it is music/game sound, not
+      // speech.
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      })
       const pc = ensurePubPC()
       watchConnection(pc)
       streamMeta[stream.id] = 'screen'
       for (const track of stream.getTracks()) {
         pc.addTrack(track, stream)
-        track.onended = () => {
-          // Browser "stop sharing" button.
-          if (get().sharing) get().toggleScreen()
+        if (track.kind === 'video') {
+          track.onended = () => {
+            // Browser "stop sharing" button.
+            if (get().sharing) get().toggleScreen()
+          }
         }
       }
       set({ sharing: true, localScreenStream: stream })

@@ -15,6 +15,10 @@ type Feed = {
   key: string
   userId: string
   stream: MediaStream
+  trackId: string
+  // voice feeds get the leveler, speaking detection and ducking; screen
+  // audio (music, games) only gets the person's volume and the limiter.
+  voice: boolean
   source: MediaStreamAudioSourceNode
   userGain: GainNode
   makeup: GainNode
@@ -102,11 +106,15 @@ function applyLeveler(c: DynamicsCompressorNode) {
     c.attack.value = 0.01
     c.release.value = 0.25
   } else {
-    // A 1:1 compressor is a pass-through.
-    c.threshold.value = 0
-    c.knee.value = 0
-    c.ratio.value = 1
+    bypass(c)
   }
+}
+
+// A 1:1 compressor is a pass-through.
+function bypass(c: DynamicsCompressorNode) {
+  c.threshold.value = 0
+  c.knee.value = 0
+  c.ratio.value = 1
 }
 
 function rmsDb(analyser: AnalyserNode, buf: Float32Array<ArrayBuffer>): number {
@@ -135,6 +143,7 @@ function tick() {
   let anySpeaking = false
   const speaking: Record<string, boolean> = {}
   for (const f of feeds.values()) {
+    if (!f.voice) continue
     const db = rmsDb(f.analyser, f.buf)
     detect(f, db, now)
     if (f.speaking) {
@@ -199,9 +208,16 @@ export const mixer = {
     return ctx.state === 'running' ? 'running' : 'suspended'
   },
 
-  attach(key: string, userId: string, stream: MediaStream) {
-    if (feeds.has(key)) {
-      if (feeds.get(key)!.stream === stream) return
+  attach(key: string, userId: string, stream: MediaStream, opts: { voice?: boolean } = {}) {
+    const voice = opts.voice ?? true
+    const track = stream.getAudioTracks()[0]
+    if (!track) return
+    const prev = feeds.get(key)
+    if (prev) {
+      // Same track already wired: nothing to do. A new audio track on the
+      // same stream (screen audio arriving after the video) needs a fresh
+      // source node, since a source only follows the track it was made with.
+      if (prev.stream === stream && prev.trackId === track.id) return
       mixer.detach(key)
     }
     const c = getCtx()
@@ -211,7 +227,8 @@ export const mixer = {
     userGain.gain.value = mixer.getUserVolume(userId)
     const makeup = c.createGain()
     const leveler = c.createDynamicsCompressor()
-    applyLeveler(leveler)
+    if (voice) applyLeveler(leveler)
+    else bypass(leveler) // shared screen sound is music/game audio: leave its dynamics alone
     const analyser = c.createAnalyser()
     analyser.fftSize = 512
     source.connect(userGain)
@@ -220,7 +237,7 @@ export const mixer = {
     leveler.connect(analyser)
     analyser.connect(master)
     feeds.set(key, {
-      key, userId, stream, source, userGain, makeup, leveler, analyser,
+      key, userId, stream, trackId: track.id, voice, source, userGain, makeup, leveler, analyser,
       buf: new Float32Array(analyser.fftSize) as Float32Array<ArrayBuffer>,
       loudFrames: 0, lastLoudAt: 0, speaking: false, makeupDb: 0,
     })
@@ -286,6 +303,7 @@ export const mixer = {
   setLeveler(on: boolean) {
     levelerOn = on
     for (const f of feeds.values()) {
+      if (!f.voice) continue
       applyLeveler(f.leveler)
       if (!on) {
         f.makeupDb = 0

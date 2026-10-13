@@ -86,7 +86,9 @@ export function GlobalCall() {
   const joinedChannelId = useCall((s) => s.joinedChannelId)
   const remoteFeeds = useCall((s) => s.remoteFeeds)
   if (!joinedChannelId) return null
-  const audioFeeds = remoteFeeds.filter((f) => f.kind === 'mic')
+  // Everything with sound: microphones, and shared screens that carry tab
+  // or system audio.
+  const audioFeeds = remoteFeeds.filter((f) => f.kind === 'mic' || f.stream.getAudioTracks().length > 0)
   return (
     <>
       <MixerBridge feeds={audioFeeds} />
@@ -98,16 +100,19 @@ export function GlobalCall() {
   )
 }
 
-// MixerBridge keeps the Web Audio graph in step with the remote mic feeds.
+// MixerBridge keeps the Web Audio graph in step with the remote feeds that
+// carry audio. Screen audio is wired as non-voice (no leveler, no speaking
+// detection, no ducking trigger).
 function MixerBridge({ feeds }: { feeds: RemoteFeed[] }) {
-  const attached = useRef(new Map<string, MediaStream>())
+  const attached = useRef(new Map<string, string>())
   useEffect(() => {
     const seen = new Set<string>()
     for (const f of feeds) {
       seen.add(f.key)
-      if (attached.current.get(f.key) !== f.stream) {
-        mixer.attach(f.key, f.userId, f.stream)
-        attached.current.set(f.key, f.stream)
+      const sig = f.stream.id + ':' + f.stream.getAudioTracks().map((t) => t.id).join(',')
+      if (attached.current.get(f.key) !== sig) {
+        mixer.attach(f.key, f.userId, f.stream, { voice: f.kind === 'mic' })
+        attached.current.set(f.key, sig)
       }
     }
     for (const key of [...attached.current.keys()]) {
