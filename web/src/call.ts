@@ -5,6 +5,9 @@
 // named "<userId>|<kind>" by the server so tracks attribute to participants.
 import { create } from 'zustand'
 import { sendCommand } from './gateway'
+import { mixer } from './audio/mixer'
+import { createMicChain, voiceConstraints, type MicChain } from './audio/mic'
+import { usePrefs } from './prefs'
 
 export interface CallParticipant {
   user_id: string
@@ -25,6 +28,8 @@ interface CallState {
   connecting: boolean
   connected: boolean
   muted: boolean
+  // deafened silences everyone (and mutes you) without leaving.
+  deafened: boolean
   cameraOn: boolean
   sharing: boolean
   // minimized collapses the call UI to a floating pill so you can browse.
@@ -35,10 +40,13 @@ interface CallState {
   localCamStream: MediaStream | null
   localScreenStream: MediaStream | null
   ring: { channelId: string; fromUserId: string } | null
+  // speaking: userId (or "me") -> currently talking, from the audio mixer.
+  speaking: Record<string, boolean>
 
   join: (channelId: string) => Promise<void>
   leave: () => void
   toggleMute: () => void
+  toggleDeafen: () => void
   toggleCamera: () => Promise<void>
   toggleScreen: () => Promise<void>
   setMinimized: (v: boolean) => void
@@ -57,7 +65,20 @@ let subPendingICE: RTCIceCandidateInit[] = []
 let pubDirty = false
 let streamMeta: Record<string, string> = {}
 let micStream: MediaStream | null = null
+// rawMic is the device stream; micStream is what we send (after the
+// high-pass / voice-isolation chain, when Web Audio is available).
+let rawMic: MediaStream | null = null
+let micChain: MicChain | null = null
 let channelId = ''
+// mutedByDeafen remembers that deafening is what muted the mic, so
+// undeafening can give the mic back.
+let mutedByDeafen = false
+
+function setMicEnabled(on: boolean) {
+  rawMic?.getAudioTracks().forEach((t) => (t.enabled = on))
+  micStream?.getAudioTracks().forEach((t) => (t.enabled = on))
+  mixer.setLocalMuted(!on)
+}
 
 function cleanupConnections() {
   pubPC?.close()
@@ -67,11 +88,17 @@ function cleanupConnections() {
   subPendingICE = []
   pubDirty = false
   streamMeta = {}
-  for (const s of [micStream, useCall.getState().localCamStream, useCall.getState().localScreenStream]) {
+  micChain?.close()
+  micChain = null
+  for (const s of [rawMic, micStream, useCall.getState().localCamStream, useCall.getState().localScreenStream]) {
     s?.getTracks().forEach((t) => t.stop())
   }
   micStream = null
+  rawMic = null
   channelId = ''
+  mutedByDeafen = false
+  mixer.attachLocal(null)
+  mixer.setDeafened(false)
 }
 
 function ensurePubPC(): RTCPeerConnection {
@@ -230,6 +257,7 @@ export const useCall = create<CallState>((set, get) => ({
   connecting: false,
   connected: false,
   muted: false,
+  deafened: false,
   cameraOn: false,
   sharing: false,
   minimized: false,
@@ -239,6 +267,7 @@ export const useCall = create<CallState>((set, get) => ({
   localCamStream: null,
   localScreenStream: null,
   ring: null,
+  speaking: {},
 
   join: async (chId) => {
     const st = get()
@@ -248,10 +277,18 @@ export const useCall = create<CallState>((set, get) => ({
     channelId = chId
     set({
       joinedChannelId: chId, connecting: true, connected: false,
-      muted: false, cameraOn: false, sharing: false, minimized: false, mediaError: '',
-      remoteFeeds: [], ring: st.ring?.channelId === chId ? null : st.ring,
+      muted: false, deafened: false, cameraOn: false, sharing: false, minimized: false, mediaError: '',
+      remoteFeeds: [], speaking: {}, ring: st.ring?.channelId === chId ? null : st.ring,
     })
     sendCommand('call.join', { channel_id: chId })
+
+    // Joining is always a tap/click, which is the gesture the audio graph
+    // needs to be allowed to make sound.
+    const prefs = usePrefs.getState()
+    mixer.setLeveler(prefs.leveler)
+    mixer.setDucking(prefs.ducking)
+    mixer.setLocalMuted(false)
+    mixer.ensureStarted().catch(() => {})
 
     // Mic is best-effort: insecure origins (plain-HTTP LAN) and denied
     // permissions still get a listen-only seat in the call.
@@ -259,15 +296,25 @@ export const useCall = create<CallState>((set, get) => ({
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Microphone needs HTTPS (or localhost). You are connected listen-only.')
       }
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      micStream = rawMic = await navigator.mediaDevices.getUserMedia({ audio: voiceConstraints() })
+      // Outgoing chain: high-pass + optional voice isolation. If Web Audio
+      // is unavailable the raw device track is sent as-is.
+      try {
+        micChain = createMicChain(mixer.context(), rawMic, { highPass: prefs.highPass, voiceIsolation: prefs.voiceIsolation })
+        micStream = micChain.stream
+      } catch {
+        micChain = null
+      }
       const pc = ensurePubPC()
       watchConnection(pc)
       for (const track of micStream.getTracks()) {
         streamMeta[micStream.id] = 'mic'
         pc.addTrack(track, micStream)
       }
+      mixer.attachLocal(micStream)
     } catch (err: any) {
       set({ mediaError: err?.message ?? 'Microphone unavailable — connected listen-only.', muted: true })
+      mixer.setLocalMuted(true)
       pushState()
     }
   },
@@ -278,8 +325,8 @@ export const useCall = create<CallState>((set, get) => ({
     cleanupConnections()
     set({
       joinedChannelId: null, connecting: false, connected: false,
-      muted: false, cameraOn: false, sharing: false, minimized: false,
-      remoteFeeds: [], localCamStream: null, localScreenStream: null,
+      muted: false, deafened: false, cameraOn: false, sharing: false, minimized: false,
+      remoteFeeds: [], localCamStream: null, localScreenStream: null, speaking: {},
     })
   },
 
@@ -287,9 +334,32 @@ export const useCall = create<CallState>((set, get) => ({
 
   toggleMute: () => {
     const next = !get().muted
-    micStream?.getAudioTracks().forEach((t) => (t.enabled = !next))
+    setMicEnabled(!next)
+    mutedByDeafen = false
     set({ muted: next })
     pushState()
+  },
+
+  toggleDeafen: () => {
+    const st = get()
+    const next = !st.deafened
+    mixer.setDeafened(next)
+    if (next && !st.muted) {
+      // Deafening also mutes you; undeafening gives the mic back.
+      setMicEnabled(false)
+      mutedByDeafen = true
+      set({ deafened: true, muted: true })
+      pushState()
+      return
+    }
+    if (!next && mutedByDeafen) {
+      setMicEnabled(true)
+      mutedByDeafen = false
+      set({ deafened: false, muted: false })
+      pushState()
+      return
+    }
+    set({ deafened: next })
   },
 
   toggleCamera: async () => {
@@ -358,3 +428,15 @@ export const useCall = create<CallState>((set, get) => ({
 
   dismissRing: () => set({ ring: null }),
 }))
+
+// The mixer reports who is talking; tiles light up from this.
+mixer.onSpeaking((speaking) => {
+  if (useCall.getState().joinedChannelId) useCall.setState({ speaking })
+})
+
+// Preference changes apply live to the running graph.
+usePrefs.subscribe((p) => {
+  mixer.setLeveler(p.leveler)
+  mixer.setDucking(p.ducking)
+  micChain?.update({ highPass: p.highPass, voiceIsolation: p.voiceIsolation })
+})

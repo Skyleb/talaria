@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ChevronDown, Expand, Grid2x2, Maximize2, Mic, MicOff, Monitor, MonitorOff,
-  Phone, PhoneOff, Video, VideoOff,
+  ChevronDown, Expand, Grid2x2, Headphones, HeadphoneOff, Maximize2, Mic, MicOff, Monitor, MonitorOff,
+  Phone, PhoneOff, Video, VideoOff, Volume2, VolumeX,
 } from 'lucide-react'
 import { useCall, type RemoteFeed } from '../../call'
+import { mixer } from '../../audio/mixer'
 import { displayName, dmTitle, useApp } from '../../store'
 import { Avatar } from '../Avatar'
 import { Button, cx } from '../ui'
@@ -65,9 +66,9 @@ function JoinBanner({ channelId }: { channelId: string }) {
   )
 }
 
-// GlobalCall mounts once in AppShell. It owns the remote audio elements (so
-// sound keeps playing wherever you browse) and shows the full-screen call
-// view unless minimized (then the ActivityBanners strip offers the way back).
+// GlobalCall mounts once in AppShell. It owns the remote audio (so sound
+// keeps playing wherever you browse) and shows the full-screen call view
+// unless minimized (then the ActivityBanners strip offers the way back).
 export function GlobalCall() {
   const joinedChannelId = useCall((s) => s.joinedChannelId)
   const minimized = useCall((s) => s.minimized)
@@ -76,12 +77,42 @@ export function GlobalCall() {
   const audioFeeds = remoteFeeds.filter((f) => f.kind === 'mic')
   return (
     <>
+      <MixerBridge feeds={audioFeeds} />
       {audioFeeds.map((f) => (
         <AudioSink key={f.key} feed={f} />
       ))}
       {!minimized && <CallOverlay channelId={joinedChannelId} />}
     </>
   )
+}
+
+// MixerBridge keeps the Web Audio graph in step with the remote mic feeds.
+function MixerBridge({ feeds }: { feeds: RemoteFeed[] }) {
+  const attached = useRef(new Map<string, MediaStream>())
+  useEffect(() => {
+    const seen = new Set<string>()
+    for (const f of feeds) {
+      seen.add(f.key)
+      if (attached.current.get(f.key) !== f.stream) {
+        mixer.attach(f.key, f.userId, f.stream)
+        attached.current.set(f.key, f.stream)
+      }
+    }
+    for (const key of [...attached.current.keys()]) {
+      if (!seen.has(key)) {
+        mixer.detach(key)
+        attached.current.delete(key)
+      }
+    }
+  }, [feeds])
+  useEffect(
+    () => () => {
+      for (const key of attached.current.keys()) mixer.detach(key)
+      attached.current.clear()
+    },
+    [],
+  )
+  return null
 }
 
 function useCallTitle(channelId: string): string {
@@ -98,9 +129,11 @@ interface Tile {
   key: string
   stream?: MediaStream
   mirror?: boolean
-  userId?: string // avatar tiles
+  userId?: string
+  self?: boolean
   label: string
   muted?: boolean
+  speaking?: boolean
 }
 
 function useTiles(channelId: string): Tile[] {
@@ -109,17 +142,22 @@ function useTiles(channelId: string): Tile[] {
   const localCam = useCall((s) => s.localCamStream)
   const localScreen = useCall((s) => s.localScreenStream)
   const selfMuted = useCall((s) => s.muted)
+  const speaking = useCall((s) => s.speaking)
   const users = useApp((s) => s.users)
   const me = useApp((s) => s.me)
 
   return useMemo(() => {
     const tiles: Tile[] = []
     const videoFeeds = remoteFeeds.filter((f) => f.kind !== 'mic')
+    const mutedOf = (uid: string) => participants.find((p) => p.user_id === uid)?.muted
     for (const f of videoFeeds) {
       tiles.push({
         key: f.key,
         stream: f.stream,
+        userId: f.userId,
         label: displayName(users, f.userId) + (f.kind === 'screen' ? ' (screen)' : ''),
+        muted: f.kind === 'cam' ? mutedOf(f.userId) : undefined,
+        speaking: f.kind === 'cam' && !!speaking[f.userId],
       })
     }
     for (const p of participants) {
@@ -130,24 +168,38 @@ function useTiles(channelId: string): Tile[] {
         userId: p.user_id,
         label: displayName(users, p.user_id),
         muted: p.muted,
+        speaking: !!speaking[p.user_id],
       })
     }
-    if (localScreen) tiles.push({ key: 'local-screen', stream: localScreen, label: 'Your screen' })
+    if (localScreen) tiles.push({ key: 'local-screen', stream: localScreen, self: true, label: 'Your screen' })
     if (localCam) {
-      tiles.push({ key: 'local-cam', stream: localCam, mirror: true, label: 'You' })
+      tiles.push({ key: 'local-cam', stream: localCam, mirror: true, self: true, label: 'You', muted: selfMuted, speaking: !!speaking.me })
     } else if (me) {
-      tiles.push({ key: `avatar-${me.id}`, userId: me.id, label: 'You', muted: selfMuted })
+      tiles.push({ key: `avatar-${me.id}`, userId: me.id, self: true, label: 'You', muted: selfMuted, speaking: !!speaking.me })
     }
     return tiles
-  }, [participants, remoteFeeds, localCam, localScreen, selfMuted, users, me])
+  }, [participants, remoteFeeds, localCam, localScreen, selfMuted, speaking, users, me])
+}
+
+// useMixerState polls the audio context so the "tap to hear" prompt can
+// appear when a browser refused to start sound without a gesture.
+function useMixerState() {
+  const [state, setState] = useState(mixer.state())
+  useEffect(() => {
+    const t = setInterval(() => setState(mixer.state()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  return state
 }
 
 function CallOverlay({ channelId }: { channelId: string }) {
   const setMinimized = useCall((s) => s.setMinimized)
   const connecting = useCall((s) => s.connecting)
   const mediaError = useCall((s) => s.mediaError)
+  const remoteFeeds = useCall((s) => s.remoteFeeds)
   const title = useCallTitle(channelId)
   const tiles = useTiles(channelId)
+  const mixerState = useMixerState()
   const [focusKey, setFocusKey] = useState<string | null>(null)
 
   const focused = tiles.find((t) => t.key === focusKey) ?? null
@@ -155,6 +207,8 @@ function CallOverlay({ channelId }: { channelId: string }) {
   useEffect(() => {
     if (focusKey && !tiles.some((t) => t.key === focusKey)) setFocusKey(null)
   }, [focusKey, tiles])
+
+  const needsTap = mixerState === 'suspended' && remoteFeeds.some((f) => f.kind === 'mic')
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-bg-0 pt-[env(safe-area-inset-top)]">
@@ -170,6 +224,15 @@ function CallOverlay({ channelId }: { channelId: string }) {
           <span className="hidden sm:inline">Minimize</span>
         </button>
       </header>
+
+      {needsTap && (
+        <button
+          onClick={() => mixer.ensureStarted()}
+          className="mx-3 mt-3 flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-text"
+        >
+          <Volume2 size={18} /> Tap to hear the call
+        </button>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
         {focused ? (
@@ -267,6 +330,8 @@ function TileView({
   onClick?: () => void
 }) {
   const users = useApp((s) => s.users)
+  const [menu, setMenu] = useState(false)
+  const canAdjust = !!tile.userId && !tile.self
   const body = tile.stream ? (
     <StreamVideo stream={tile.stream} mirror={tile.mirror} />
   ) : (
@@ -279,16 +344,80 @@ function TileView({
       onClick={onClick}
       title={hint}
       className={cx(
-        'group relative overflow-hidden rounded-xl bg-black',
+        'group relative overflow-hidden rounded-xl bg-black transition-shadow',
         fill ? 'h-full w-full' : 'aspect-video',
-        onClick && 'cursor-pointer transition-shadow hover:ring-2 hover:ring-accent/60',
+        tile.speaking && 'ring-2 ring-success',
+        !tile.speaking && onClick && 'cursor-pointer hover:ring-2 hover:ring-accent/60',
       )}
     >
       {body}
-      <span className="absolute bottom-1 left-1.5 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-white">
+      <button
+        onClick={(e) => {
+          if (!canAdjust) return
+          e.stopPropagation()
+          setMenu((v) => !v)
+        }}
+        title={canAdjust ? 'Volume for this person' : undefined}
+        className={cx(
+          'absolute bottom-1 left-1.5 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-white',
+          canAdjust && 'hover:bg-black/80',
+        )}
+      >
         {tile.label}
         {tile.muted && <MicOff size={11} className="text-danger" />}
-      </span>
+        {canAdjust && <Volume2 size={11} className="opacity-70" />}
+      </button>
+      {menu && tile.userId && (
+        <VolumePopover userId={tile.userId} name={tile.label} onClose={() => setMenu(false)} />
+      )}
+    </div>
+  )
+}
+
+// VolumePopover: how loud this person is for you (0–200 %), remembered per
+// person on this device.
+function VolumePopover({ userId, name, onClose }: { userId: string; name: string; onClose: () => void }) {
+  const [vol, setVol] = useState(() => mixer.getUserVolume(userId))
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  function update(v: number) {
+    setVol(v)
+    mixer.setUserVolume(userId, v)
+  }
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="absolute bottom-8 left-1.5 z-10 w-56 rounded-xl border border-edge bg-bg-1 p-3 text-ink shadow-xl"
+    >
+      <div className="mb-2 flex items-center justify-between text-xs">
+        <span className="truncate font-medium">{name}</span>
+        <span className="tabular-nums text-ink-2">{Math.round(vol * 100)}%</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button title="Mute for me" onClick={() => update(vol === 0 ? 1 : 0)} className="text-ink-1 hover:text-ink">
+          {vol === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={200}
+          step={5}
+          value={Math.round(vol * 100)}
+          onChange={(e) => update(Number(e.target.value) / 100)}
+          className="w-full accent-[var(--color-accent)]"
+        />
+      </div>
+      <div className="mt-2 flex justify-between text-[11px] text-ink-2">
+        <button onClick={() => update(1)} className="hover:text-ink">
+          Reset
+        </button>
+        <button onClick={onClose} className="hover:text-ink">
+          Done
+        </button>
+      </div>
     </div>
   )
 }
@@ -309,17 +438,20 @@ function StreamVideo({ stream, mirror }: { stream: MediaStream; mirror?: boolean
   )
 }
 
-
 function Controls() {
   const muted = useCall((s) => s.muted)
+  const deafened = useCall((s) => s.deafened)
   const cameraOn = useCall((s) => s.cameraOn)
   const sharing = useCall((s) => s.sharing)
-  const { toggleMute, toggleCamera, toggleScreen, leave } = useCall.getState()
+  const { toggleMute, toggleDeafen, toggleCamera, toggleScreen, leave } = useCall.getState()
   const canCapture = !!navigator.mediaDevices?.getUserMedia
   return (
     <div className="flex items-center justify-center gap-2">
       <CtlBtn title={muted ? 'Unmute' : 'Mute'} active={!muted} onClick={toggleMute} disabled={!canCapture}>
         {muted ? <MicOff size={18} /> : <Mic size={18} />}
+      </CtlBtn>
+      <CtlBtn title={deafened ? 'Undeafen' : 'Deafen — silence everyone'} active={!deafened} onClick={toggleDeafen}>
+        {deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}
       </CtlBtn>
       <CtlBtn title={cameraOn ? 'Turn camera off' : 'Turn camera on'} active={cameraOn} onClick={toggleCamera} disabled={!canCapture}>
         {cameraOn ? <Video size={18} /> : <VideoOff size={18} />}
@@ -367,10 +499,14 @@ function CtlBtn({
   )
 }
 
+// AudioSink keeps each remote stream attached to a (muted) media element.
+// Sound is produced by the Web Audio mixer, but WebKit and older Chrome only
+// deliver remote WebRTC audio into Web Audio while an element holds the
+// stream.
 function AudioSink({ feed }: { feed: RemoteFeed }) {
   const ref = useRef<HTMLAudioElement>(null)
   useEffect(() => {
     if (ref.current) ref.current.srcObject = feed.stream
   }, [feed.stream])
-  return <audio ref={ref} autoPlay />
+  return <audio ref={ref} autoPlay muted />
 }

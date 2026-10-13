@@ -3,6 +3,7 @@ import { Bell, BellOff, ChevronDown, Download, Link2, Moon, Monitor, Sun, X } fr
 import { AvatarCropper } from '../components/AvatarCropper'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
+import { usePrefs, type AVPrefs } from '../prefs'
 import { PALETTES } from '../lib/palettes'
 import {
   canInstall, disablePush, enablePush, isStandalone, onInstallChange, promptInstall, pushState,
@@ -36,6 +37,7 @@ export default function SettingsPage({ onMenu, onClose }: { onMenu?: () => void;
           <ProfileSection />
           <NotificationsSection />
           <AppearanceSection />
+          <VoiceVideoSection />
           <PasswordSection />
           <SessionsSection />
           {me?.is_admin && <AdminSection />}
@@ -483,6 +485,64 @@ function AdminSection() {
 
 function SubHead({ children }: { children: React.ReactNode }) {
   return <h3 className="border-b border-edge pb-1 text-sm font-semibold text-ink">{children}</h3>
+}
+
+// VoiceVideoSection: local call preferences (this device only).
+function VoiceVideoSection() {
+  const prefs = usePrefs()
+  const set = usePrefs((s) => s.set)
+  return (
+    <Card title="Voice & video">
+      <div className="space-y-5">
+        <div className="space-y-3">
+          <SubHead>Your microphone</SubHead>
+          <Toggle
+            checked={prefs.highPass}
+            onChange={(v) => set({ highPass: v })}
+            label="High-pass filter"
+            hint="Cuts rumble, desk thumps and handling noise below the voice range."
+          />
+          <Toggle
+            checked={prefs.voiceIsolation}
+            onChange={(v) => set({ voiceIsolation: v })}
+            label="Voice isolation"
+            hint="Keeps only the speech band and gates silence. Stops the squeal when a phone and a laptop are in the same room; music will sound thin, so turn it off for singing or instruments."
+          />
+        </div>
+        <div className="space-y-3">
+          <SubHead>What you hear</SubHead>
+          <Toggle
+            checked={prefs.leveler}
+            onChange={(v) => set({ leveler: v })}
+            label="Even out voices"
+            hint="Quiet people come up, loud people come down. A hard limiter always protects your ears either way."
+          />
+          <Toggle
+            checked={prefs.ducking.enabled}
+            onChange={(v) => set({ ducking: { enabled: v } as AVPrefs['ducking'] })}
+            label="Duck shared music while someone talks"
+          />
+          {prefs.ducking.enabled && (
+            <div>
+              <Label>How much ({Math.round(prefs.ducking.amount * 100)}%)</Label>
+              <input
+                type="range"
+                min={10}
+                max={90}
+                step={5}
+                value={Math.round(prefs.ducking.amount * 100)}
+                onChange={(e) => set({ ducking: { amount: Number(e.target.value) / 100 } as AVPrefs['ducking'] })}
+                className="w-full accent-[var(--color-accent)]"
+              />
+            </div>
+          )}
+          <p className="text-xs text-ink-2">
+            Each person's volume is set from their tile during a call: click the name on a tile.
+          </p>
+        </div>
+      </div>
+    </Card>
+  )
 }
 
 function Toggle({

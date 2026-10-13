@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Headphones, Minimize2, Pause, Play } from 'lucide-react'
 import { useApp } from '../../store'
 import { useListen } from '../../listen'
+import { mixer } from '../../audio/mixer'
 import { cx } from '../ui'
 import { MediaPlayer, YouTubePlayer } from './players'
 import type { ListenState } from '../../lib/types'
@@ -34,6 +35,9 @@ function FloatingPlayer({ st, meId }: { st: ListenState; meId: string }) {
   const overlayOpen = useApp((s) => s.overlayOpen)
   const boxRef = useRef<HTMLDivElement>(null)
   const [fs, setFs] = useState(false)
+  // duck lowers the music while someone in a call is talking.
+  const [duck, setDuck] = useState(1)
+  useEffect(() => mixer.registerDuckTarget('listen', setDuck), [])
   const { play, pause, next, reportDuration } = useListen.getState()
 
   const isHost = session.host_user_id === meId
@@ -84,7 +88,7 @@ function FloatingPlayer({ st, meId }: { st: ListenState; meId: string }) {
         key="yt"
         item={current}
         session={session}
-        volume={volume}
+        volume={volume * duck}
         muted={muted}
         onEnded={onEnded}
         onDuration={(id, ms) => reportDuration(channelId, id, ms)}
@@ -95,7 +99,7 @@ function FloatingPlayer({ st, meId }: { st: ListenState; meId: string }) {
         key="media"
         item={current}
         session={session}
-        volume={volume}
+        volume={volume * duck}
         muted={muted}
         onEnded={onEnded}
         onDuration={(id, ms) => reportDuration(channelId, id, ms)}
