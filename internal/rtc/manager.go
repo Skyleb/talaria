@@ -56,10 +56,10 @@ type Manager struct {
 // SetCaps sets the upload caps advertised to publishers (kbps).
 func (m *Manager) SetCaps(camKbps, screenKbps int) {
 	if camKbps <= 0 {
-		camKbps = 2500
+		camKbps = 12000
 	}
 	if screenKbps <= 0 {
-		screenKbps = 4000
+		screenKbps = 20000
 	}
 	m.camKbps, m.screenKbps = camKbps, screenKbps
 }
@@ -262,7 +262,7 @@ func (m *Manager) Join(ctx context.Context, userID, channelID string) error {
 			cur.broadcastState()
 			cam, screen := m.camKbps, m.screenKbps
 			if cam <= 0 {
-				cam, screen = 2500, 4000
+				cam, screen = 12000, 20000
 			}
 			m.sendToUser(userID, EvtRTCCaps, map[string]any{"channel_id": channelID, "cam_kbps": cam, "screen_kbps": screen})
 			return nil
@@ -339,7 +339,7 @@ func (m *Manager) Join(ctx context.Context, userID, channelID string) error {
 	r.mu.Unlock()
 	cam, screen := m.camKbps, m.screenKbps
 	if cam <= 0 {
-		cam, screen = 2500, 4000
+		cam, screen = 12000, 20000
 	}
 	m.sendToUser(userID, EvtRTCCaps, map[string]any{"channel_id": channelID, "cam_kbps": cam, "screen_kbps": screen})
 	return nil

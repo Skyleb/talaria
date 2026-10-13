@@ -4,7 +4,7 @@
 // should use (set by rewriting the fmtp line in the server's answer, which is
 // where Chrome's encoder reads them), and a sender bitrate cap. Camera and
 // screen ladders describe the simulcast layers (Phase 4).
-import type { CamPreset, MicTier, ScreenHint } from '../prefs'
+import type { CamPreset, MicTier, ScreenPreset } from '../prefs'
 import { voiceConstraints } from '../audio/mic'
 
 export interface MicTierSpec {
@@ -86,10 +86,23 @@ function mergeParams(existing: string, override: Record<string, string>): string
 
 // --- video (Phase 4) ---
 
-export const CAM_PRESETS: Record<CamPreset, { label: string; width: number; height: number; fps: number; kbps: number }> = {
-  '360p': { label: '360p', width: 640, height: 360, fps: 30, kbps: 600 },
-  '720p': { label: '720p', width: 1280, height: 720, fps: 30, kbps: 1500 },
-  '1080p': { label: '1080p', width: 1920, height: 1080, fps: 30, kbps: 2500 },
+export interface CamPresetSpec {
+  label: string
+  width: number
+  height: number
+  fps: number
+  kbps: number
+  heavy?: boolean // worth a warning: needs a strong machine and upload
+}
+
+export const CAM_PRESETS: Record<CamPreset, CamPresetSpec> = {
+  '360p': { label: '360p · 30 fps', width: 640, height: 360, fps: 30, kbps: 600 },
+  '720p': { label: '720p · 30 fps', width: 1280, height: 720, fps: 30, kbps: 1500 },
+  '1080p': { label: '1080p · 30 fps', width: 1920, height: 1080, fps: 30, kbps: 3000 },
+  '1080p60': { label: '1080p · 60 fps', width: 1920, height: 1080, fps: 60, kbps: 4500, heavy: true },
+  '1440p': { label: '1440p · 30 fps', width: 2560, height: 1440, fps: 30, kbps: 6000, heavy: true },
+  '1440p60': { label: '1440p · 60 fps', width: 2560, height: 1440, fps: 60, kbps: 9000, heavy: true },
+  '2160p': { label: '4K · 30 fps', width: 3840, height: 2160, fps: 30, kbps: 12000, heavy: true },
 }
 
 export function camConstraints(p: CamPreset): MediaTrackConstraints {
@@ -98,28 +111,61 @@ export function camConstraints(p: CamPreset): MediaTrackConstraints {
 }
 
 // camLadder: simulcast encodings, lowest first (rids q, h, f). Low-power
-// devices get two layers.
+// devices get two layers. The small layers stay small whatever the top is,
+// so a viewer on a weak link always has something cheap to fall back to.
 export function camLadder(p: CamPreset, capKbps: number, lowPower: boolean): RTCRtpEncodingParameters[] {
-  const top = Math.min(CAM_PRESETS[p].kbps, capKbps) * 1000
+  const s = CAM_PRESETS[p]
+  const top = Math.min(s.kbps, capKbps) * 1000
+  const fps = s.fps
+  // Scale so the q layer lands near 360p and h near 720p regardless of the top size.
+  const qScale = Math.max(2, Math.round(s.height / 360))
+  const hScale = Math.max(2, Math.round(s.height / 720))
   if (p === '360p' || lowPower) {
     return [
-      { rid: 'q', scaleResolutionDownBy: 2, maxBitrate: Math.min(150_000, top) },
-      { rid: 'f', maxBitrate: top },
+      { rid: 'q', scaleResolutionDownBy: 2, maxBitrate: Math.min(150_000, top), maxFramerate: Math.min(fps, 30) },
+      { rid: 'f', maxBitrate: top, maxFramerate: fps },
     ]
   }
   return [
-    { rid: 'q', scaleResolutionDownBy: 4, maxBitrate: Math.min(top / 6, 250_000) },
-    { rid: 'h', scaleResolutionDownBy: 2, maxBitrate: Math.min(top / 2.5, 900_000) },
-    { rid: 'f', maxBitrate: top },
+    { rid: 'q', scaleResolutionDownBy: qScale, maxBitrate: Math.min(top / 6, 300_000), maxFramerate: Math.min(fps, 30) },
+    { rid: 'h', scaleResolutionDownBy: hScale, maxBitrate: Math.min(top / 2.5, 1_500_000), maxFramerate: Math.min(fps, 30) },
+    { rid: 'f', maxBitrate: top, maxFramerate: fps },
   ]
 }
 
-export function screenLadder(h: ScreenHint, capKbps: number): RTCRtpEncodingParameters[] {
-  const top = Math.min(h === 'detail' ? 2500 : 4000, capKbps) * 1000
-  const fps = h === 'detail' ? 10 : 30
+export interface ScreenPresetSpec {
+  label: string
+  hint: 'detail' | 'motion'
+  fps: number
+  maxHeight: number // 0 = native
+  kbps: number
+  heavy?: boolean
+}
+
+export const SCREEN_PRESETS: Record<ScreenPreset, ScreenPresetSpec> = {
+  text: { label: 'Sharp text · 10 fps', hint: 'detail', fps: 10, maxHeight: 0, kbps: 2500 },
+  motion: { label: 'Smooth motion · 1080p 30 fps', hint: 'motion', fps: 30, maxHeight: 1080, kbps: 4000 },
+  motion60: { label: 'Smooth motion · 1080p 60 fps', hint: 'motion', fps: 60, maxHeight: 1080, kbps: 6000, heavy: true },
+  hires: { label: 'High res · 1440p 60 fps', hint: 'motion', fps: 60, maxHeight: 1440, kbps: 10000, heavy: true },
+  ultra: { label: 'Ultra · native (4K) 60 fps', hint: 'motion', fps: 60, maxHeight: 0, kbps: 20000, heavy: true },
+}
+
+export function screenConstraints(p: ScreenPreset): MediaTrackConstraints {
+  const s = SCREEN_PRESETS[p]
+  const c: MediaTrackConstraints = { frameRate: { ideal: s.fps, max: s.fps } }
+  if (s.maxHeight > 0) {
+    c.height = { max: s.maxHeight }
+    c.width = { max: Math.round((s.maxHeight * 16) / 9) }
+  }
+  return c
+}
+
+export function screenLadder(p: ScreenPreset, capKbps: number): RTCRtpEncodingParameters[] {
+  const s = SCREEN_PRESETS[p]
+  const top = Math.min(s.kbps, capKbps) * 1000
   return [
-    { rid: 'h', scaleResolutionDownBy: 2, maxBitrate: Math.min(top / 4, 800_000), maxFramerate: fps },
-    { rid: 'f', maxBitrate: top, maxFramerate: fps },
+    { rid: 'h', scaleResolutionDownBy: 2, maxBitrate: Math.min(top / 4, 1_200_000), maxFramerate: Math.min(s.fps, 30) },
+    { rid: 'f', maxBitrate: top, maxFramerate: s.fps },
   ]
 }
 

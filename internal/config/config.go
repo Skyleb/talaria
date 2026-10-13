@@ -109,10 +109,10 @@ type WebRTCConfig struct {
 	TURNPort   int    `toml:"turn_port"`
 	PublicIP   string `toml:"public_ip"`
 	// Upload caps handed to clients for their top simulcast layer.
-	MaxCamKbps    int `toml:"max_cam_kbps"`    // default 2500
-	MaxScreenKbps int `toml:"max_screen_kbps"` // default 4000
+	MaxCamKbps    int `toml:"max_cam_kbps"`    // default 12000
+	MaxScreenKbps int `toml:"max_screen_kbps"` // default 20000
 	// MaxDownlinkKbps bounds the per-viewer bandwidth estimate.
-	MaxDownlinkKbps int `toml:"max_downlink_kbps"` // default 20000
+	MaxDownlinkKbps int `toml:"max_downlink_kbps"` // default 40000
 }
 
 type NetConfig struct {
@@ -144,9 +144,9 @@ func Default() *Config {
 		WebRTC: WebRTCConfig{
 			UDPPort:         50000,
 			TURNPort:        3478,
-			MaxCamKbps:      2500,
-			MaxScreenKbps:   4000,
-			MaxDownlinkKbps: 20000,
+			MaxCamKbps:      12000,
+			MaxScreenKbps:   20000,
+			MaxDownlinkKbps: 40000,
 		},
 		Net: NetConfig{TryUPnP: true},
 	}

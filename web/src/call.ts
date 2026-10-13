@@ -8,7 +8,7 @@ import { sendCommand } from './gateway'
 import { mixer } from './audio/mixer'
 import { createMicChain, type MicChain } from './audio/mic'
 import { usePrefs, isLowPower, type MicTier } from './prefs'
-import { MIC_TIERS, micConstraints, mungeOpusFmtp, camConstraints, camLadder, screenLadder, preferVP8 } from './media/encodings'
+import { MIC_TIERS, SCREEN_PRESETS, micConstraints, mungeOpusFmtp, camConstraints, camLadder, screenConstraints, screenLadder, preferVP8 } from './media/encodings'
 
 export interface CallParticipant {
   user_id: string
@@ -261,7 +261,7 @@ async function reconnect(reason: string) {
     if (st.localScreenStream) {
       for (const track of st.localScreenStream.getTracks()) {
         if (track.kind === 'video') {
-          const tx = pc.addTransceiver(track, { direction: 'sendonly', streams: [st.localScreenStream], sendEncodings: screenLadder(prefs.screenHint, caps.screen) })
+          const tx = pc.addTransceiver(track, { direction: 'sendonly', streams: [st.localScreenStream], sendEncodings: screenLadder(prefs.screenPreset, caps.screen) })
           preferVP8(tx)
         } else {
           pc.addTrack(track, st.localScreenStream)
@@ -593,14 +593,16 @@ export const useCall = create<CallState>((set, get) => ({
       // Ask for tab/system audio too (Chrome and Edge offer it; others
       // quietly give video only). Keep it raw: it is music/game sound, not
       // speech.
+      const screenPreset = usePrefs.getState().screenPreset
+      const spec = SCREEN_PRESETS[screenPreset]
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: screenConstraints(screenPreset),
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       })
       const pc = ensurePubPC()
       watchConnection(pc)
       streamMeta[stream.id] = 'screen'
-      const hint = usePrefs.getState().screenHint
+      const hint = spec.hint
       for (const track of stream.getTracks()) {
         if (track.kind === 'video') {
           // 'detail' keeps text sharp at a low frame rate; 'motion' favours
@@ -613,7 +615,7 @@ export const useCall = create<CallState>((set, get) => ({
           const tx = pc.addTransceiver(track, {
             direction: 'sendonly',
             streams: [stream],
-            sendEncodings: screenLadder(hint, caps.screen),
+            sendEncodings: screenLadder(screenPreset, caps.screen),
           })
           preferVP8(tx)
           const params = tx.sender.getParameters()

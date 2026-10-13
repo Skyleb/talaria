@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { BellOff, Hash, Images, Menu, Moon, NotebookPen, Phone, PhoneOff, Plus, Search, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
+import { BellOff, Hash, Images, Menu, Moon, NotebookPen, Phone, PhoneOff, Plus, RotateCw, Search, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
 import { setAppBadge, syncPush } from '../lib/notifications'
 import { dmOther, dmTitle, displayName, isNotesChat, useApp } from '../store'
@@ -751,6 +751,7 @@ function SelfBar() {
       >
         {dark ? <Sun size={18} /> : <Moon size={18} />}
       </button>
+      <RefreshButton />
       <Link to="/app/media?scope=all" title="All media" className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink">
         <Images size={18} />
       </Link>
@@ -826,8 +827,31 @@ function GatewayBanner() {
     >
       {level !== 'bad' && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
       {level === 'brief' && 'Reconnecting… messages may be a moment behind'}
+      {level !== 'brief' && <RefreshButton compact />}
       {level === 'slow' && `Still reconnecting (${secs}s) — the app is not up to date`}
       {level === 'bad' && 'Cannot reach the server — check your connection'}
     </div>
+  )
+}
+
+// reloadPage reloads the app; a reload hangs up a call, so it asks first.
+function reloadPage() {
+  if (useCall.getState().joinedChannelId && !window.confirm('Refreshing will hang up your call. Refresh anyway?')) return
+  location.reload()
+}
+
+// RefreshButton: a visible way to reload when you doubt the page is current.
+function RefreshButton({ compact }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <button onClick={reloadPage} className="ml-2 inline-flex items-center gap-1 underline underline-offset-2 hover:opacity-80">
+        <RotateCw size={11} /> Refresh
+      </button>
+    )
+  }
+  return (
+    <button title="Refresh the app" onClick={reloadPage} className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink">
+      <RotateCw size={18} />
+    </button>
   )
 }

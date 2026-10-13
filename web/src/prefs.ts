@@ -2,13 +2,13 @@
 import { create } from 'zustand'
 
 export type MicTier = 'voice' | 'balanced' | 'music'
-export type CamPreset = '360p' | '720p' | '1080p'
-export type ScreenHint = 'detail' | 'motion'
+export type CamPreset = '360p' | '720p' | '1080p' | '1080p60' | '1440p' | '1440p60' | '2160p'
+export type ScreenPreset = 'text' | 'motion' | 'motion60' | 'hires' | 'ultra'
 
 export interface AVPrefs {
   micTier: MicTier
   camPreset: CamPreset
-  screenHint: ScreenHint
+  screenPreset: ScreenPreset
   // highPass cuts rumble and handling noise from your mic.
   highPass: boolean
   // voiceIsolation band-limits your mic to speech and gates silence; it
@@ -35,7 +35,7 @@ export function isLowPower(): boolean {
 const DEFAULTS: AVPrefs = {
   micTier: 'voice',
   camPreset: isLowPower() ? '360p' : '720p',
-  screenHint: 'detail',
+  screenPreset: 'text',
   highPass: true,
   voiceIsolation: isMobile(),
   leveler: true,
@@ -60,7 +60,7 @@ export const usePrefs = create<AVPrefs & { set: (p: Partial<AVPrefs>) => void }>
     const next: AVPrefs = {
       micTier: p.micTier ?? get().micTier,
       camPreset: p.camPreset ?? get().camPreset,
-      screenHint: p.screenHint ?? get().screenHint,
+      screenPreset: p.screenPreset ?? get().screenPreset,
       highPass: p.highPass ?? get().highPass,
       voiceIsolation: p.voiceIsolation ?? get().voiceIsolation,
       leveler: p.leveler ?? get().leveler,

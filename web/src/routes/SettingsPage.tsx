@@ -4,7 +4,7 @@ import { AvatarCropper } from '../components/AvatarCropper'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
 import { usePrefs, type AVPrefs } from '../prefs'
-import { MIC_TIERS, CAM_PRESETS } from '../media/encodings'
+import { MIC_TIERS, CAM_PRESETS, SCREEN_PRESETS } from '../media/encodings'
 import { PALETTES } from '../lib/palettes'
 import {
   canInstall, disablePush, enablePush, isStandalone, onInstallChange, promptInstall, pushState,
@@ -521,12 +521,21 @@ function VoiceVideoSection() {
             </div>
             <div>
               <Label>Screen share</Label>
-              <Select value={prefs.screenHint} onChange={(e) => set({ screenHint: e.target.value as AVPrefs['screenHint'] })}>
-                <option value="detail">Sharp text (10 fps)</option>
-                <option value="motion">Smooth motion (30 fps)</option>
+              <Select value={prefs.screenPreset} onChange={(e) => set({ screenPreset: e.target.value as AVPrefs['screenPreset'] })}>
+                {(Object.keys(SCREEN_PRESETS) as AVPrefs['screenPreset'][]).map((p) => (
+                  <option key={p} value={p}>
+                    {SCREEN_PRESETS[p].label} · up to {SCREEN_PRESETS[p].kbps} kbps
+                  </option>
+                ))}
               </Select>
             </div>
           </div>
+          {(CAM_PRESETS[prefs.camPreset].heavy || SCREEN_PRESETS[prefs.screenPreset].heavy) && (
+            <p className="text-xs text-warning">
+              60 fps, 1440p and 4K need a strong machine and a fast upload (you send several sizes at once). The server's upload
+              caps in Admin may lower what actually goes out.
+            </p>
+          )}
           <p className="text-xs text-ink-2">
             You send several sizes at once; each viewer gets the best one their connection can take, or the one they pick on your tile.
             Camera and screen settings apply the next time you turn them on.

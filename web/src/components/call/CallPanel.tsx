@@ -7,7 +7,7 @@ import { useCall, type RemoteFeed, type StreamQuality } from '../../call'
 import { useListen } from '../../listen'
 import { mixer } from '../../audio/mixer'
 import { usePrefs, type AVPrefs } from '../../prefs'
-import { MIC_TIERS, CAM_PRESETS } from '../../media/encodings'
+import { MIC_TIERS, CAM_PRESETS, SCREEN_PRESETS } from '../../media/encodings'
 import { displayName, dmTitle, useApp } from '../../store'
 import { Avatar } from '../Avatar'
 import { Button, cx, Select } from '../ui'
@@ -626,10 +626,16 @@ function QualityButton() {
             ))}
           </Select>
           <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wide text-ink-1">Screen share</label>
-          <Select value={prefs.screenHint} onChange={(e) => set({ screenHint: e.target.value as AVPrefs['screenHint'] })}>
-            <option value="detail">Sharp text (10 fps)</option>
-            <option value="motion">Smooth motion (30 fps)</option>
+          <Select value={prefs.screenPreset} onChange={(e) => set({ screenPreset: e.target.value as AVPrefs['screenPreset'] })}>
+            {(Object.keys(SCREEN_PRESETS) as AVPrefs['screenPreset'][]).map((p) => (
+              <option key={p} value={p}>
+                {SCREEN_PRESETS[p].label} · up to {SCREEN_PRESETS[p].kbps} kbps
+              </option>
+            ))}
           </Select>
+          {(CAM_PRESETS[prefs.camPreset].heavy || SCREEN_PRESETS[prefs.screenPreset].heavy) && (
+            <p className="mt-1 text-xs text-warning">High tiers need a strong machine and upload; the server caps may lower them.</p>
+          )}
           <p className="mt-1 text-xs text-ink-2">Camera and screen settings apply the next time you turn them on.</p>
           <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-ink">
             <input type="checkbox" className="accent-[var(--color-accent)]" checked={prefs.voiceIsolation} onChange={(e) => set({ voiceIsolation: e.target.checked })} />
