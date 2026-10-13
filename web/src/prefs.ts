@@ -37,7 +37,9 @@ export function isLowPower(): boolean {
 const DEFAULTS: AVPrefs = {
   micTier: 'balanced',
   camPreset: isLowPower() ? '360p' : '720p',
-  screenPreset: 'text',
+  // Smooth motion (30 fps) is what a plain browser screen share does; the
+  // 10 fps sharp-text preset is an opt-in for slides and code.
+  screenPreset: 'motion',
   highPass: true,
   voiceIsolation: false,
   leveler: false,

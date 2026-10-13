@@ -111,15 +111,15 @@ export function camConstraints(p: CamPreset): MediaTrackConstraints {
 }
 
 // camLadder: simulcast encodings, lowest first (rids q, h, f). Low-power
-// devices get two layers. The small layers stay small whatever the top is,
-// so a viewer on a weak link always has something cheap to fall back to.
+// devices get two layers. Each layer is half the size of the next (the
+// browser needs a real step between them): h lands near 720p, or half the
+// top for smaller presets, and q is half of h.
 export function camLadder(p: CamPreset, capKbps: number, lowPower: boolean): RTCRtpEncodingParameters[] {
   const s = CAM_PRESETS[p]
   const top = Math.min(s.kbps, capKbps) * 1000
   const fps = s.fps
-  // Scale so the q layer lands near 360p and h near 720p regardless of the top size.
-  const qScale = Math.max(2, Math.round(s.height / 360))
   const hScale = Math.max(2, Math.round(s.height / 720))
+  const qScale = hScale * 2
   if (p === '360p' || lowPower) {
     return [
       { rid: 'q', scaleResolutionDownBy: 2, maxBitrate: Math.min(150_000, top), maxFramerate: Math.min(fps, 30) },

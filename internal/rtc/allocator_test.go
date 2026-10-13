@@ -142,3 +142,66 @@ func TestAllocateScreenBeforeCamera(t *testing.T) {
 		t.Fatalf("screen should step up first: screen=%q cam=%q", got["b|screen"], got["a|cam"])
 	}
 }
+
+func TestAllocateNeverCongestedJumpsToTop(t *testing.T) {
+	now := time.Now()
+	// Browsers start the small layer first; once the big ones flow, a track
+	// with no congestion history goes straight to the top (no 3 s hold).
+	h := map[string]*hystState{"a|cam": {Current: "q", LastSwitch: now.Add(-2 * time.Second)}}
+	r := []trackReq{req("a|cam", "cam", cam3, "auto", 1)}
+	if got := allocate(0, 0, r, h, now); got["a|cam"] != "f" {
+		t.Fatalf("never-congested track should jump to f, got %q", got["a|cam"])
+	}
+	// Right after a switch it waits the minimum gap.
+	h2 := map[string]*hystState{"a|cam": {Current: "q", LastSwitch: now.Add(-200 * time.Millisecond)}}
+	if got := allocate(0, 0, r, h2, now); got["a|cam"] != "q" {
+		t.Fatalf("switched again inside the minimum gap: %q", got["a|cam"])
+	}
+	// A real budget still applies: with 400 kbps it stays on q.
+	h3 := map[string]*hystState{"a|cam": {Current: "q", LastSwitch: now.Add(-2 * time.Second)}}
+	if got := allocate(400_000, 0, r, h3, now); got["a|cam"] != "q" {
+		t.Fatalf("jumped over a budget: %q", got["a|cam"])
+	}
+}
+
+func TestEstimatorCongested(t *testing.T) {
+	if c, _ := estimatorCongested(map[string]any{"state": "increase", "averageLoss": 0.0}); c {
+		t.Fatal("increase with no loss is not congestion")
+	}
+	if c, _ := estimatorCongested(map[string]any{"state": "hold", "averageLoss": 0.01}); c {
+		t.Fatal("hold with a little loss is not congestion")
+	}
+	if c, _ := estimatorCongested(map[string]any{"state": "decrease", "averageLoss": 0.0}); !c {
+		t.Fatal("decrease is congestion")
+	}
+	if c, _ := estimatorCongested(map[string]any{"state": "increase", "averageLoss": 0.2}); !c {
+		t.Fatal("heavy loss is congestion")
+	}
+	if c, _ := estimatorCongested(map[string]any{}); c {
+		t.Fatal("missing stats are not congestion")
+	}
+}
+
+func TestCongestionBudget(t *testing.T) {
+	now := time.Now()
+	if b := congestionBudget(time.Time{}, 0, 4_000_000, now); b != 0 {
+		t.Fatalf("no verdict yet should be unlimited, got %d", b)
+	}
+	// An estimate below what we send is NOT a budget on its own (it lags
+	// every upgrade by design).
+	if b := congestionBudget(time.Time{}, 0, 700_000, now); b != 0 {
+		t.Fatalf("a low estimate alone must not become a budget, got %d", b)
+	}
+	// A verdict stays in force for congestionHold, at the lower of its
+	// estimate and the current one.
+	at := now.Add(-time.Second)
+	if b := congestionBudget(at, 2_000_000, 2_200_000, now); b != 2_000_000 {
+		t.Fatalf("budget during hold: %d, want 2000000", b)
+	}
+	if b := congestionBudget(at, 2_000_000, 1_500_000, now); b != 1_500_000 {
+		t.Fatalf("current estimate lower than verdict: %d, want 1500000", b)
+	}
+	if b := congestionBudget(now.Add(-congestionHold-time.Second), 2_000_000, 2_200_000, now); b != 0 {
+		t.Fatalf("expired verdict should be unlimited, got %d", b)
+	}
+}

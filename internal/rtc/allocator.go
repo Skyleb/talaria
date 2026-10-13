@@ -154,13 +154,23 @@ func allocate(budgetBps, audioBps int, reqs []trackReq, hyst map[string]*hystSta
 		}
 	}
 
-	// Headroom: step the most important track up one layer after a hold.
+	// Headroom: step the most important track up one layer after a hold. A
+	// track that has never been congested on a link with no signal goes
+	// straight to the top instead: browsers start the big layers a few
+	// seconds late, and nothing has suggested they will not fit.
 	if len(downgraded) == 0 && total() > 0 && (!limited || float64(budget) >= upgradeHeadroom*float64(total())) {
 		for _, t := range auto {
 			h := hyst[t.Key]
 			r := rankOf(t.Layers, cur[t.Key])
 			if r < 0 || r >= len(t.Layers)-1 {
 				continue
+			}
+			if !limited && h.LastDowngrade.IsZero() {
+				if now.Sub(h.LastSwitch) >= minSwitchGap {
+					cur[t.Key] = t.Layers[len(t.Layers)-1].RID
+					h.HeadroomSince = time.Time{}
+				}
+				continue // every such track, not one step at a time
 			}
 			if h.HeadroomSince.IsZero() {
 				h.HeadroomSince = now

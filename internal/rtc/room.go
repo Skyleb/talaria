@@ -59,8 +59,11 @@ type Peer struct {
 	bwe          cc.BandwidthEstimator        // downlink estimate from the viewer's TWCC feedback
 	videoSince   time.Time                    // when video first flowed to this viewer
 	allocPending atomic.Bool
-	rembBps      int
-	rembAt       time.Time
+	// congestedAt/congestedBps latch the estimator's last real congestion
+	// verdict (overuse or loss), which is brief; the allocator applies it as
+	// a budget for a few seconds (see budgetLocked).
+	congestedAt  time.Time
+	congestedBps int
 
 	muted  bool
 	camera bool
@@ -73,12 +76,6 @@ type Peer struct {
 type subPref struct {
 	Quality  string `json:"quality"`
 	Priority int    `json:"priority"`
-}
-
-func (p *Peer) noteREMB(bps int) {
-	p.room.mu.Lock()
-	p.rembBps, p.rembAt = bps, time.Now()
-	p.room.mu.Unlock()
 }
 
 type participantState struct {
@@ -186,7 +183,15 @@ func (r *Room) attachPCs(p *Peer) error {
 	if bwe != nil {
 		// Re-pick layers soon after the viewer's estimate moves (debounced;
 		// the ticker also re-allocates every second).
-		bwe.OnTargetBitrateChange(func(int) {
+		bwe.OnTargetBitrateChange(func(bps int) {
+			// Sample the verdict now: the estimator leaves its decrease state
+			// as soon as the delay gradient settles, often before the
+			// debounced allocation below runs.
+			if congested, _ := estimatorCongested(bwe.GetStats()); congested {
+				r.mu.Lock()
+				p.congestedAt, p.congestedBps = time.Now(), bps
+				r.mu.Unlock()
+			}
 			if p.allocPending.CompareAndSwap(false, true) {
 				time.AfterFunc(250*time.Millisecond, func() {
 					p.allocPending.Store(false)
@@ -425,36 +430,64 @@ func (r *Room) allocateLocked(p *Peer) {
 		}
 		reqs = append(reqs, trackReq{Key: key, Kind: dt.pt.kind, Layers: layers, Pref: pref.Quality, Priority: pref.Priority})
 	}
-	sending := 0
-	for _, dt := range p.downtracks {
-		sending += dt.pt.layerBps(dt.currentLayer(), now)
-	}
-	budget := r.budgetLocked(p, now, sending)
+	budget := r.budgetLocked(p, now)
 	targets := allocate(budget, 64_000*len(p.audioSenders), reqs, p.hyst, now)
 	for key, rid := range targets {
 		byKey[key].setTarget(rid)
 	}
 }
 
+const (
+	// congestionHold is how long one congestion verdict stays in force as a
+	// budget. Long enough to outlive the allocation debounce and ticker,
+	// short enough that a cleared link recovers (the allocator's own
+	// cooldown then paces the climb back up).
+	congestionHold = 3 * time.Second
+	// lossCongested: average packet loss above this is congestion on its own.
+	lossCongested = 0.05
+)
+
+// estimatorCongested reads GCC's verdict from its stats: the rate controller
+// is in its decrease state (delay-gradient overuse) or loss is significant.
+func estimatorCongested(stats map[string]any) (congested bool, loss float64) {
+	state, _ := stats["state"].(string)
+	loss, _ = stats["averageLoss"].(float64)
+	return state == "decrease" || loss > lossCongested, loss
+}
+
 // budgetLocked turns the viewer's bandwidth estimate into a congestion
-// signal. A send-side estimate hovers a little above whatever is being sent
-// and cannot see unused capacity, so it is not a ceiling: the allocator
-// gets a budget (and sheds layers) only when the estimate has fallen
-// clearly below what we are sending. Otherwise 0 = no limit, and viewers
-// get the best layer that is flowing.
-func (r *Room) budgetLocked(p *Peer, now time.Time, sendingBps int) int {
-	const congested = 0.85
-	estimate := 0
-	if p.bwe != nil && now.Sub(p.videoSince) > 2*time.Second {
-		estimate = p.bwe.GetTargetBitrate()
+// signal. The estimate is send-side: it is capped at 1.5x what the viewer
+// has recently received and climbs only ~8%/s, so right after a step up it
+// always looks "too low" even on a wide-open link. Comparing it with what we
+// send would shed every upgrade. Instead only the estimator's own congestion
+// verdict (overuse or loss) counts; while one is in force the estimate is
+// the budget, otherwise 0 = no limit and viewers get the best layer that is
+// flowing.
+func (r *Room) budgetLocked(p *Peer, now time.Time) int {
+	if p.bwe == nil || now.Sub(p.videoSince) <= 2*time.Second {
+		return 0 // the opening burst of keyframes trips the overuse detector
 	}
-	if estimate <= 0 && p.rembBps > 0 && now.Sub(p.rembAt) < 3*time.Second {
-		estimate = p.rembBps
+	if congested, _ := estimatorCongested(p.bwe.GetStats()); congested {
+		p.congestedAt, p.congestedBps = now, p.bwe.GetTargetBitrate()
 	}
-	if estimate > 0 && sendingBps > 0 && float64(estimate) < congested*float64(sendingBps) {
-		return estimate
+	return congestionBudget(p.congestedAt, p.congestedBps, p.bwe.GetTargetBitrate(), now)
+}
+
+// congestionBudget is the budget in force after a congestion verdict at
+// congestedAt with estimate congestedBps: the lower of that and the current
+// estimate for congestionHold, then none.
+func congestionBudget(congestedAt time.Time, congestedBps, estimate int, now time.Time) int {
+	if congestedAt.IsZero() || now.Sub(congestedAt) > congestionHold {
+		return 0
 	}
-	return 0
+	budget := congestedBps
+	if estimate > 0 && estimate < budget {
+		budget = estimate
+	}
+	if budget <= 0 {
+		return 0
+	}
+	return budget
 }
 
 // nominalBps is the expected rate of a layer that has not been measured yet.

@@ -106,8 +106,10 @@ func (d *downtrack) writeLocked(p *rtp.Packet, now time.Time) {
 	_ = d.local.WriteRTP(&rtp.Packet{Header: h, Payload: p.Payload})
 }
 
-// drainRTCP reads the subscriber's feedback: a PLI from the viewer becomes
-// a PLI for the layer it is watching; REMB is kept for bandwidth estimation.
+// drainRTCP reads the subscriber's feedback (reading is required so the
+// interceptors keep running): a PLI from the viewer becomes a PLI for the
+// layer it is watching. REMB is ignored on purpose: like the send-side
+// estimate it hovers near what is being received, so it is no ceiling.
 func (d *downtrack) drainRTCP() {
 	for {
 		pkts, _, err := d.sender.ReadRTCP()
@@ -115,13 +117,11 @@ func (d *downtrack) drainRTCP() {
 			return
 		}
 		for _, pkt := range pkts {
-			switch v := pkt.(type) {
+			switch pkt.(type) {
 			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
 				if cur := d.currentLayer(); cur != "" || d.pt.singleLayer() {
 					d.pt.requestKeyframe(cur)
 				}
-			case *rtcp.ReceiverEstimatedMaximumBitrate:
-				d.sub.noteREMB(int(v.Bitrate))
 			}
 		}
 	}
