@@ -41,6 +41,13 @@ type configPayload struct {
 		Enabled bool   `json:"enabled"`
 		Domain  string `json:"domain"`
 	} `json:"lan_access"`
+	DDNSHost struct {
+		Enabled  bool   `json:"enabled"`
+		Zone     string `json:"zone"`
+		APIKey   string `json:"api_key"`
+		Secret   string `json:"secret"`
+		MaxNames int    `json:"max_names"`
+	} `json:"ddns_host"`
 	YouTube struct {
 		APIKey string `json:"api_key"`
 	} `json:"youtube"`
@@ -81,6 +88,11 @@ func (s *Server) configSnapshot() configPayload {
 	p.DDNS.IntervalMinutes = c.DDNS.IntervalMinutes
 	p.LanAccess.Enabled = c.LanAccess.Enabled
 	p.LanAccess.Domain = c.LanAccess.Domain
+	p.DDNSHost.Enabled = c.DDNSHost.Enabled
+	p.DDNSHost.Zone = c.DDNSHost.Zone
+	p.DDNSHost.APIKey = c.DDNSHost.APIKey
+	p.DDNSHost.Secret = c.DDNSHost.Secret
+	p.DDNSHost.MaxNames = c.DDNSHost.MaxNames
 	p.YouTube.APIKey = c.YouTube.APIKey
 	p.Gifs.GiphyAPIKey = c.Gifs.GiphyAPIKey
 	p.WebRTC.UDPPort = c.WebRTC.UDPPort
@@ -106,8 +118,8 @@ func validateConfig(p *configPayload) string {
 		return "HTTPS port must be 1-65535"
 	case p.TLS.Mode == "acme" && p.TLS.Domain == "":
 		return "TLS mode \"acme\" requires a domain"
-	case !slices.Contains([]string{"duckdns", "porkbun", "custom"}, p.DDNS.Provider):
-		return "DDNS provider must be duckdns, porkbun or custom"
+	case !slices.Contains([]string{"duckdns", "porkbun", "talaria", "custom"}, p.DDNS.Provider):
+		return "DDNS provider must be duckdns, porkbun, talaria or custom"
 	case !validPort(p.WebRTC.UDPPort):
 		return "call media UDP port must be 1-65535"
 	}
@@ -138,6 +150,11 @@ func validateConfig(p *configPayload) string {
 			return "DuckDNS can only update *.duckdns.org names; " + domain + " needs the Porkbun provider (or set the DDNS domain to your DuckDNS name)"
 		}
 	}
+	if p.DDNSHost.Enabled {
+		if msg := validateDDNSHost(p); msg != "" {
+			return msg
+		}
+	}
 	if p.LanAccess.Enabled {
 		domain := strings.TrimSpace(p.LanAccess.Domain)
 		switch {
@@ -148,11 +165,11 @@ func validateConfig(p *configPayload) string {
 		case p.TLS.Domain == "" || (p.TLS.Mode != "auto" && p.TLS.Mode != "acme"):
 			return "home network access requires HTTPS with a domain (Let's Encrypt)"
 		case !ddns.SupportsDNS01(p.DDNS.Provider):
-			return "home network access needs a DNS provider that can publish TXT records: choose DuckDNS or Porkbun under Dynamic DNS"
+			return "home network access needs a DNS provider that can publish TXT records: choose DuckDNS, Porkbun or a Talaria name under Dynamic DNS"
 		case p.DDNS.Provider == "duckdns" && !isDuckDNS(domain):
 			return "the home-access domain " + domain + " is not a DuckDNS name; switch the Dynamic DNS provider to Porkbun first"
 		}
-		if _, err := ddns.NewTXTSetter(p.DDNS.Provider, p.DDNS.Token, p.DDNS.Secret); err != nil {
+		if _, err := ddns.NewTXTSetter(p.DDNS.Provider, p.DDNS.Token, p.DDNS.Secret, p.DDNS.URL); err != nil {
 			return "home network access " + err.Error() + " (set under Dynamic DNS)"
 		}
 	}
@@ -292,6 +309,12 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	c.DDNS.IntervalMinutes = p.DDNS.IntervalMinutes
 	c.LanAccess.Enabled = p.LanAccess.Enabled
 	c.LanAccess.Domain = strings.TrimSpace(p.LanAccess.Domain)
+	c.DDNSHost.Enabled = p.DDNSHost.Enabled
+	c.DDNSHost.Zone = strings.TrimSpace(p.DDNSHost.Zone)
+	c.DDNSHost.APIKey = strings.TrimSpace(p.DDNSHost.APIKey)
+	c.DDNSHost.Secret = strings.TrimSpace(p.DDNSHost.Secret)
+	c.DDNSHost.MaxNames = p.DDNSHost.MaxNames
+	ddnsHostCfg := ddnsHostConfig(c)
 	c.YouTube.APIKey = strings.TrimSpace(p.YouTube.APIKey)
 	c.Gifs.GiphyAPIKey = strings.TrimSpace(p.Gifs.GiphyAPIKey)
 	lanToken := c.LanAccess.Token
@@ -337,13 +360,22 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 		if p.LanAccess.Enabled {
 			if err := s.LanAccess.Set(lanaccess.Config{
 				Domain: p.LanAccess.Domain, Provider: p.DDNS.Provider,
-				Token: lanToken, Secret: lanSecret,
+				Token: lanToken, Secret: lanSecret, URL: p.DDNS.URL,
 				LanIP: lanIP, DataDir: dataDir,
 			}); err != nil {
 				warnings = append(warnings, "Home network access could not start: "+err.Error())
 			}
 		} else {
 			s.LanAccess.Stop()
+		}
+	}
+	if s.DDNSHost != nil {
+		if p.DDNSHost.Enabled {
+			if err := s.DDNSHost.Set(ddnsHostCfg); err != nil {
+				warnings = append(warnings, "Hosted DDNS could not start: "+err.Error())
+			}
+		} else {
+			s.DDNSHost.Stop()
 		}
 	}
 

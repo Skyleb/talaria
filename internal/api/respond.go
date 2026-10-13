@@ -11,6 +11,7 @@ import (
 	"github.com/skyleb/talaria/internal/blob"
 	"github.com/skyleb/talaria/internal/config"
 	"github.com/skyleb/talaria/internal/ddns"
+	"github.com/skyleb/talaria/internal/ddnshost"
 	"github.com/skyleb/talaria/internal/gateway"
 	"github.com/skyleb/talaria/internal/lanaccess"
 	"github.com/skyleb/talaria/internal/landns"
@@ -34,6 +35,9 @@ type Server struct {
 	// LanAccess serves the lan domain (cert + redirect target) for devices
 	// stuck behind broken router NAT loopback.
 	LanAccess *lanaccess.Runner
+	// DDNSHost issues dynamic-DNS names to other Talaria servers; nil or
+	// disabled when this server is not a host.
+	DDNSHost *ddnshost.Service
 	// Push sends Web Push notifications; nil disables them.
 	Push *push.Sender
 	// Listen runs synchronized listening sessions.

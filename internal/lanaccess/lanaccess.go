@@ -20,9 +20,10 @@ import (
 
 type Config struct {
 	Domain   string // e.g. yourname-lan.duckdns.org or lan.talaria.gg
-	Provider string // DNS provider: "duckdns" or "porkbun" (updates the record and solves DNS-01)
-	Token    string // DuckDNS token / Porkbun API key
+	Provider string // DNS provider: "duckdns", "porkbun" or "talaria" (updates the record and solves DNS-01)
+	Token    string // DuckDNS token / Porkbun API key / Talaria name token
 	Secret   string // Porkbun secret API key
+	URL      string // talaria: the host server, e.g. https://talaria.gg
 	LanIP    string // empty = auto-detect
 	DataDir  string // certificate cache location
 }
@@ -64,7 +65,7 @@ func (r *Runner) Set(cfg Config) error {
 	if provider == "" {
 		provider = "duckdns"
 	}
-	txt, err := ddns.NewTXTSetter(provider, cfg.Token, cfg.Secret)
+	txt, err := ddns.NewTXTSetter(provider, cfg.Token, cfg.Secret, cfg.URL)
 	if err != nil {
 		return fail(err.Error())
 	}
@@ -84,6 +85,7 @@ func (r *Runner) Set(cfg Config) error {
 		Domain:   domain,
 		Token:    cfg.Token,
 		Secret:   cfg.Secret,
+		URL:      cfg.URL,
 		IP:       lanIP,
 		Interval: 5 * time.Minute,
 	})

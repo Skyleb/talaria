@@ -23,6 +23,13 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
 	mux.HandleFunc("GET /api/v1/invites/{code}", s.handleInvitePreview)
+	mux.HandleFunc("POST /api/v1/setup/claim-name", s.handleSetupClaimName)
+	// Hosted dynamic DNS for other Talaria servers (bearer-token auth).
+	mux.HandleFunc("GET /api/v1/ddns/zone", s.handleDDNSHostZone)
+	mux.HandleFunc("POST /api/v1/ddns/claim", s.handleDDNSHostClaim)
+	mux.HandleFunc("POST /api/v1/ddns/update", s.handleDDNSHostUpdate)
+	mux.HandleFunc("POST /api/v1/ddns/txt", s.handleDDNSHostTXT)
+	mux.HandleFunc("DELETE /api/v1/ddns/name", s.handleDDNSHostRelease)
 
 	// --- authenticated ---
 	authed := http.NewServeMux()
@@ -105,6 +112,9 @@ func (s *Server) Router() http.Handler {
 	authed.HandleFunc("GET /api/v1/admin/stats", s.adminOnly(s.handleAdminStats))
 	authed.HandleFunc("GET /api/v1/admin/config", s.adminOnly(s.handleAdminGetConfig))
 	authed.HandleFunc("PUT /api/v1/admin/config", s.adminOnly(s.handleAdminPutConfig))
+	authed.HandleFunc("POST /api/v1/admin/claim-name", s.adminOnly(s.handleAdminClaimName))
+	authed.HandleFunc("GET /api/v1/admin/ddns-host/names", s.adminOnly(s.handleAdminDDNSHostList))
+	authed.HandleFunc("DELETE /api/v1/admin/ddns-host/names/{name}", s.adminOnly(s.handleAdminDDNSHostDelete))
 
 	authed.HandleFunc("GET /api/v1/gateway", s.handleGateway)
 

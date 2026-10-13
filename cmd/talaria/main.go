@@ -24,6 +24,7 @@ import (
 	"github.com/skyleb/talaria/internal/blob"
 	"github.com/skyleb/talaria/internal/config"
 	"github.com/skyleb/talaria/internal/ddns"
+	"github.com/skyleb/talaria/internal/ddnshost"
 	"github.com/skyleb/talaria/internal/gateway"
 	"github.com/skyleb/talaria/internal/lanaccess"
 	"github.com/skyleb/talaria/internal/landns"
@@ -268,11 +269,20 @@ func run(stop <-chan struct{}) {
 			}
 			if err := lanAccess.Set(lanaccess.Config{
 				Domain: cfg.LanAccess.Domain, Provider: cfg.DDNS.Provider,
-				Token: token, Secret: secret,
+				Token: token, Secret: secret, URL: cfg.DDNS.URL,
 				LanIP: cfg.LanAccess.LanIP, DataDir: dataDir,
 			}); err != nil {
 				log.Error("lan access not started", "err", err)
 			}
+		}
+	}
+
+	// Hosted dynamic DNS: issue names under our zone to other Talaria
+	// servers. Runtime-reconfigurable from the admin settings UI.
+	srv.DDNSHost = ddnshost.New(st, log)
+	if cfg.DDNSHost.Enabled {
+		if err := srv.DDNSHost.Set(api.DDNSHostConfig(cfg)); err != nil {
+			log.Error("hosted ddns not started", "err", err)
 		}
 	}
 

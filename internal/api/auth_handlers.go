@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/ddns"
 	"github.com/skyleb/talaria/internal/model"
 	"github.com/skyleb/talaria/internal/store"
 )
@@ -40,6 +41,10 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		Username   string `json:"username"`
 		Password   string `json:"password"`
 		Domain     string `json:"domain"`
+		// Set when the wizard claimed a name at a hosting Talaria server:
+		// Talaria then also keeps the record updated from the start.
+		DDNSURL   string `json:"ddns_url"`
+		DDNSToken string `json:"ddns_token"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -70,6 +75,16 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	s.Store.SetSetting(r.Context(), "setup_complete", "true")
 	if d := strings.TrimSpace(req.Domain); d != "" {
 		s.Config.TLS.Domain = d
+		if tok := strings.TrimSpace(req.DDNSToken); tok != "" {
+			s.Config.DDNS.Enabled = true
+			s.Config.DDNS.Provider = "talaria"
+			s.Config.DDNS.URL = ddns.NormalizeHostURL(req.DDNSURL)
+			s.Config.DDNS.Token = tok
+			s.Config.DDNS.Domain = d
+			if s.DDNS != nil {
+				s.DDNS.Set(ddns.Config{Provider: "talaria", Domain: d, Token: tok, URL: s.Config.DDNS.URL})
+			}
+		}
 		if err := s.Config.Save(); err != nil {
 			s.Log.Error("save config", "err", err)
 		}

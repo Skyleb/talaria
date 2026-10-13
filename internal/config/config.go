@@ -15,6 +15,7 @@ type Config struct {
 	DDNS      DDNSConfig      `toml:"ddns"`
 	LanAccess LanAccessConfig `toml:"lan_access"`
 	LanDNS    LanDNSConfig    `toml:"lan_dns"`
+	DDNSHost  DDNSHostConfig  `toml:"ddns_host"`
 	YouTube   YouTubeConfig   `toml:"youtube"`
 	Gifs      GifsConfig      `toml:"gifs"`
 	WebRTC    WebRTCConfig    `toml:"webrtc"`
@@ -74,6 +75,21 @@ type LanAccessConfig struct {
 	Token   string `toml:"token"`  // defaults to ddns.token
 	Secret  string `toml:"secret"` // defaults to ddns.secret
 	LanIP   string `toml:"lan_ip"` // defaults to auto-detect
+}
+
+// DDNSHostConfig turns this server into a dynamic-DNS provider for other
+// Talaria installations: they claim a name under zone (e.g. "talaria.gg"
+// gives skyle.talaria.gg) and keep it pointed at their connection through
+// this server, which publishes the records via Porkbun. Credentials default
+// to the [ddns] Porkbun keys. Names a client can take are limited by the
+// built-in reserved list plus this server's own hostnames.
+type DDNSHostConfig struct {
+	Enabled bool   `toml:"enabled"`
+	Zone    string `toml:"zone"`    // names are issued as <name>.<zone>; must be in the Porkbun domain
+	APIKey  string `toml:"api_key"` // defaults to ddns.token
+	Secret  string `toml:"secret"`  // defaults to ddns.secret
+	// MaxNames caps how many names may be claimed in total (default 1000).
+	MaxNames int `toml:"max_names"`
 }
 
 // LanDNSConfig embeds a small DNS forwarder that answers queries for this
@@ -136,6 +152,7 @@ func Default() *Config {
 			Provider:        "duckdns",
 			IntervalMinutes: 5,
 		},
+		DDNSHost: DDNSHostConfig{MaxNames: 1000},
 		LanDNS: LanDNSConfig{
 			Port:     53,
 			Upstream: "1.1.1.1, 8.8.8.8",

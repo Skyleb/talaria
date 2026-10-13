@@ -16,13 +16,14 @@ import (
 )
 
 type Config struct {
-	// Provider: "duckdns" and "porkbun" are built in; "custom" calls URL
-	// verbatim (templates: {DOMAIN}, {TOKEN}).
+	// Provider: "duckdns", "porkbun" and "talaria" (a name issued by another
+	// Talaria server, see Talaria) are built in; "custom" calls URL verbatim
+	// (templates: {DOMAIN}, {TOKEN}).
 	Provider string
 	Domain   string // full hostname, e.g. skyle.duckdns.org or talaria.gg
-	Token    string // DuckDNS token / Porkbun API key / custom {TOKEN}
+	Token    string // DuckDNS token / Porkbun API key / Talaria name token / custom {TOKEN}
 	Secret   string // Porkbun secret API key
-	URL      string // custom provider only
+	URL      string // custom: update URL; talaria: the host server, e.g. https://talaria.gg
 	// IP pins the record to an explicit address (e.g. a LAN IP for the
 	// lan-access domain). Empty = the provider detects the caller's IP.
 	IP       string
@@ -40,7 +41,7 @@ type TXTSetter interface {
 // SupportsDNS01 reports whether provider can solve DNS-01 challenges, i.e.
 // whether NewTXTSetter will succeed for it.
 func SupportsDNS01(provider string) bool {
-	return provider == "duckdns" || provider == "porkbun"
+	return provider == "duckdns" || provider == "porkbun" || provider == "talaria"
 }
 
 // Validate reports why cfg can't run: an unknown provider, or missing
@@ -55,19 +56,23 @@ func Validate(cfg Config) error {
 		if cfg.Token == "" || cfg.Secret == "" {
 			return errors.New("Porkbun needs the API key and secret API key (porkbun.com → Account → API Access)")
 		}
+	case "talaria":
+		if cfg.Token == "" {
+			return errors.New("a Talaria name needs its token: claim one with the button, or paste the token you were given")
+		}
 	case "custom":
 		if cfg.URL == "" {
 			return errors.New("custom DDNS needs an update URL")
 		}
 	default:
-		return errors.New("DDNS provider must be duckdns, porkbun or custom")
+		return errors.New("DDNS provider must be duckdns, porkbun, talaria or custom")
 	}
 	return nil
 }
 
 // NewTXTSetter returns the TXT publisher for a provider, or an error for
 // providers that can only update an A record (custom update URLs).
-func NewTXTSetter(provider, token, secret string) (TXTSetter, error) {
+func NewTXTSetter(provider, token, secret, url string) (TXTSetter, error) {
 	switch provider {
 	case "duckdns":
 		if token == "" {
@@ -79,6 +84,11 @@ func NewTXTSetter(provider, token, secret string) (TXTSetter, error) {
 			return nil, errors.New("needs the Porkbun API key and secret key")
 		}
 		return &Porkbun{APIKey: token, Secret: secret}, nil
+	case "talaria":
+		if token == "" {
+			return nil, errors.New("needs the Talaria name token")
+		}
+		return &Talaria{URL: url, Token: token}, nil
 	default:
 		return nil, fmt.Errorf("provider %q cannot publish TXT records (needed for the certificate)", provider)
 	}
@@ -173,9 +183,15 @@ func SetDuckDNSTXT(ctx context.Context, domain, token, txt string) error {
 	return nil
 }
 
+// UpdateOnce performs a single update for cfg (exported for tests and tools).
+func UpdateOnce(ctx context.Context, cfg Config) error { return updateOnce(ctx, cfg) }
+
 func updateOnce(ctx context.Context, cfg Config) error {
 	if cfg.Provider == "porkbun" {
 		return updatePorkbun(ctx, &Porkbun{APIKey: cfg.Token, Secret: cfg.Secret}, cfg)
+	}
+	if cfg.Provider == "talaria" {
+		return (&Talaria{URL: cfg.URL, Token: cfg.Token}).Update(ctx, cfg.Domain, cfg.IP)
 	}
 	var endpoint string
 	switch cfg.Provider {

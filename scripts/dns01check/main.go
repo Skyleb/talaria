@@ -31,7 +31,7 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	setter, err := ddns.NewTXTSetter(*provider, *token, *secret)
+	setter, err := ddns.NewTXTSetter(*provider, *token, *secret, "")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
