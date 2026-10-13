@@ -108,6 +108,13 @@ func (r *Runner) Domain() string {
 	return r.domain
 }
 
+// LanIP returns the private address the lan domain points at.
+func (r *Runner) LanIP() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lanIP
+}
+
 // Matches reports whether a TLS SNI belongs to the lan domain.
 func (r *Runner) Matches(serverName string) bool {
 	r.mu.Lock()

@@ -1,8 +1,6 @@
 package api
 
 import (
-	"fmt"
-	"html/template"
 	"net"
 	"net/http"
 	"slices"
@@ -15,10 +13,11 @@ import (
 
 // lanRedirect intercepts page loads that reach the main domain through the
 // router's NAT loopback — identifiable because their source address is the
-// server's own public IP — and serves a tiny probe page that bounces the
-// browser to the lan domain (direct, full speed, valid cert). Routers with
-// working loopback never trigger it for working transfers either way; ones
-// with broken loopback (bulk transfers stall) are exactly who this is for.
+// server's own public IP — and answers with a plain HTTP 302 to the lan
+// domain (direct, full speed, valid cert). An HTTP redirect is followed
+// natively by every browser; a JavaScript redirect would trip mobile
+// redirect-blockers. Routers with working loopback never need it; ones with
+// broken loopback (bulk transfers stall) are exactly who this is for.
 func (s *Server) lanRedirect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lanDomain := ""
@@ -37,18 +36,20 @@ func (s *Server) lanRedirect(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		// The probe page sets this cookie when the lan domain is unreachable
-		// (e.g. DNS rebind protection) so the user still gets the app.
-		if c, _ := r.Cookie("talaria_lan"); c != nil && c.Value == "skip" {
-			next.ServeHTTP(w, r)
-			return
-		}
 		remote, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil || !slices.Contains(s.publicIPs(pub), remote) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		serveLanProbe(w, lanDomain)
+		// Redirecting a client to a domain its network refuses to resolve
+		// (DNS rebind protection) would strand it; in that case keep serving
+		// over the hairpin instead.
+		if !s.lanResolvable(lanDomain, s.LanAccess.LanIP()) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, "https://"+lanDomain+r.URL.RequestURI(), http.StatusFound)
 	})
 }
 
@@ -80,34 +81,35 @@ type pubIPCache struct {
 	pubIPDomain string
 	pubIPs      []string
 	pubIPFetched time.Time
+
+	lanResMu      sync.Mutex
+	lanResDomain  string
+	lanResOK      bool
+	lanResFetched time.Time
 }
 
-const lanProbeHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Talaria</title></head>
-<body style="font-family:system-ui;background:#0b0d12;color:#a3a9b6;display:flex;height:100vh;align-items:center;justify-content:center;margin:0">
-<p>Connecting&hellip;</p>
-<script>
-(function () {
-  var lan = "https://%s";
-  var dest = lan + location.pathname + location.search + location.hash;
-  var done = false;
-  function fallback() {
-    if (done) return; done = true;
-    document.cookie = "talaria_lan=skip; max-age=600; path=/";
-    location.reload();
-  }
-  var t = setTimeout(fallback, 2500);
-  fetch(lan + "/healthz", { mode: "cors" }).then(function (r) {
-    if (!r.ok) throw 0;
-    if (done) return; done = true; clearTimeout(t);
-    location.replace(dest);
-  }).catch(fallback);
-})();
-</script></body></html>`
-
-func serveLanProbe(w http.ResponseWriter, lanDomain string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	fmt.Fprintf(w, lanProbeHTML, template.JSEscapeString(lanDomain))
+// lanResolvable reports whether the lan domain resolves to the server's LAN
+// IP through the OS resolver — which on this machine means the router's DNS,
+// the same resolver LAN clients use. Routers with DNS rebind protection
+// filter private-IP answers network-wide, so this one check covers clients.
+func (s *Server) lanResolvable(lanDomain, wantIP string) bool {
+	s.lanResMu.Lock()
+	defer s.lanResMu.Unlock()
+	if s.lanResDomain == lanDomain && time.Since(s.lanResFetched) < 5*time.Minute {
+		return s.lanResOK
+	}
+	s.lanResDomain = lanDomain
+	s.lanResFetched = time.Now()
+	s.lanResOK = false
+	if ips, err := net.LookupIP(lanDomain); err == nil {
+		for _, ip := range ips {
+			if ip.String() == wantIP {
+				s.lanResOK = true
+				break
+			}
+		}
+	}
+	return s.lanResOK
 }
 
 func stripPort(host string) string {

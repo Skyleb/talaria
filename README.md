@@ -59,10 +59,13 @@ localhost.
 > **Domain not working from your own WiFi?** Many home routers can't reach
 > their own public IP from inside the network (broken NAT loopback), which
 > shows up as a blank page on LAN devices while everything works remotely.
-> Enable **LAN DNS** in Settings → Admin — server configuration: Talaria then
-> answers DNS for its own domain with the server's LAN IP and forwards all
-> other queries upstream. One router change applies it to every device: set
-> the DHCP DNS server to the Talaria machine's IP.
+> Enable **Home network access** in Settings → Admin — server configuration:
+> create a second free DuckDNS subdomain (e.g. `yourname-lan`) and Talaria
+> keeps it pointed at the server's LAN IP, fetches its own Let's Encrypt
+> certificate (DNS-01), and transparently 302-redirects hairpinned page loads
+> to it. No router or per-device changes. (A `[lan_dns]` DNS-server mode also
+> exists in the TOML for setups that prefer pointing the router's DHCP DNS at
+> the Talaria machine.)
 
 > **CGNAT warning:** if your router's WAN IP differs from the IP shown by
 > "what is my IP" sites, your ISP uses CGNAT and inbound connections cannot
