@@ -67,7 +67,9 @@ using your router's built-in DDNS client and skip the `[ddns]` section.
 Prefer a real domain such as `talaria.gg`? Buy it at [Porkbun](https://porkbun.com)
 (it sells `.gg` and most other TLDs, and DNS hosting is included), then:
 
-1. Porkbun → Account → **API Access**: create an API key pair.
+1. Porkbun → Account → **API Access**: create an API key pair and give it the
+   **DNS** permission (keys without it are rejected with "does not have the
+   dns permission").
 2. On the domain's details page, turn on **API Access** for that domain.
 3. In Talaria, set the HTTPS domain to `talaria.gg`, choose the **Porkbun**
    DDNS provider and paste the two keys. (Equivalent TOML:)

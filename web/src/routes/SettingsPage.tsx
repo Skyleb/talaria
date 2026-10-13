@@ -679,9 +679,9 @@ function ServerConfigSection() {
                     </div>
                   </div>
                   <p className="text-xs text-ink-2">
-                    At porkbun.com: Account → API Access to create the key pair, then on the domain's
-                    details page turn on <strong>API Access</strong>. Talaria keeps the A record for the
-                    domain above pointed at this connection.
+                    At porkbun.com: Account → API Access to create the key pair <strong>with the DNS
+                    permission</strong>, then on the domain's details page turn on <strong>API Access</strong>.
+                    Talaria keeps the A record for the domain above pointed at this connection.
                   </p>
                 </div>
               ) : (
