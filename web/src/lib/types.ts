@@ -207,9 +207,10 @@ export interface ServerConfig {
   }
   ddns: {
     enabled: boolean
-    provider: 'duckdns' | 'custom'
+    provider: 'duckdns' | 'porkbun' | 'custom'
     domain: string
     token: string
+    secret: string
     url: string
     interval_minutes: number
   }

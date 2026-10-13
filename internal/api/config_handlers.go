@@ -31,6 +31,7 @@ type configPayload struct {
 		Provider        string `json:"provider"`
 		Domain          string `json:"domain"`
 		Token           string `json:"token"`
+		Secret          string `json:"secret"`
 		URL             string `json:"url"`
 		IntervalMinutes int    `json:"interval_minutes"`
 	} `json:"ddns"`
@@ -65,6 +66,7 @@ func (s *Server) configSnapshot() configPayload {
 	p.DDNS.Provider = c.DDNS.Provider
 	p.DDNS.Domain = c.DDNS.Domain
 	p.DDNS.Token = c.DDNS.Token
+	p.DDNS.Secret = c.DDNS.Secret
 	p.DDNS.URL = c.DDNS.URL
 	p.DDNS.IntervalMinutes = c.DDNS.IntervalMinutes
 	p.LanAccess.Enabled = c.LanAccess.Enabled
@@ -91,8 +93,8 @@ func validateConfig(p *configPayload) string {
 		return "HTTPS port must be 1-65535"
 	case p.TLS.Mode == "acme" && p.TLS.Domain == "":
 		return "TLS mode \"acme\" requires a domain"
-	case !slices.Contains([]string{"duckdns", "custom"}, p.DDNS.Provider):
-		return "DDNS provider must be duckdns or custom"
+	case !slices.Contains([]string{"duckdns", "porkbun", "custom"}, p.DDNS.Provider):
+		return "DDNS provider must be duckdns, porkbun or custom"
 	case !validPort(p.WebRTC.UDPPort):
 		return "call media UDP port must be 1-65535"
 	}
@@ -104,29 +106,42 @@ func validateConfig(p *configPayload) string {
 		if domain == "" {
 			domain = p.TLS.Domain
 		}
-		switch {
-		case domain == "":
+		if domain == "" {
 			return "DDNS needs a domain (set one here or under HTTPS)"
-		case p.DDNS.Provider == "duckdns" && p.DDNS.Token == "":
-			return "DuckDNS needs the token shown at duckdns.org"
-		case p.DDNS.Provider == "custom" && p.DDNS.URL == "":
-			return "custom DDNS needs an update URL"
+		}
+		if err := ddns.Validate(ddnsConfig(p, domain)); err != nil {
+			return err.Error()
 		}
 	}
 	if p.LanAccess.Enabled {
 		domain := strings.TrimSpace(p.LanAccess.Domain)
 		switch {
 		case domain == "":
-			return "home network access needs its own domain (create a second free DuckDNS subdomain)"
+			return "home network access needs its own domain (a second DuckDNS subdomain, or a subdomain of your own domain)"
 		case strings.EqualFold(domain, p.TLS.Domain):
 			return "the home-access domain must be different from the main domain"
 		case p.TLS.Domain == "" || (p.TLS.Mode != "auto" && p.TLS.Mode != "acme"):
 			return "home network access requires HTTPS with a domain (Let's Encrypt)"
-		case p.DDNS.Token == "":
-			return "home network access needs the DuckDNS token (set under Dynamic DNS)"
+		case !ddns.SupportsDNS01(p.DDNS.Provider):
+			return "home network access needs a DNS provider that can publish TXT records: choose DuckDNS or Porkbun under Dynamic DNS"
+		}
+		if _, err := ddns.NewTXTSetter(p.DDNS.Provider, p.DDNS.Token, p.DDNS.Secret); err != nil {
+			return "home network access " + err.Error() + " (set under Dynamic DNS)"
 		}
 	}
 	return ""
+}
+
+// ddnsConfig builds the updater config for the payload's DDNS section.
+func ddnsConfig(p *configPayload, domain string) ddns.Config {
+	return ddns.Config{
+		Provider: p.DDNS.Provider,
+		Domain:   domain,
+		Token:    p.DDNS.Token,
+		Secret:   p.DDNS.Secret,
+		URL:      p.DDNS.URL,
+		Interval: time.Duration(p.DDNS.IntervalMinutes) * time.Minute,
+	}
 }
 
 // restartRequired lists the human-readable settings that changed but only
@@ -199,6 +214,7 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	c.DDNS.Provider = p.DDNS.Provider
 	c.DDNS.Domain = p.DDNS.Domain
 	c.DDNS.Token = p.DDNS.Token
+	c.DDNS.Secret = p.DDNS.Secret
 	c.DDNS.URL = p.DDNS.URL
 	c.DDNS.IntervalMinutes = p.DDNS.IntervalMinutes
 	c.LanAccess.Enabled = p.LanAccess.Enabled
@@ -208,6 +224,10 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	lanToken := c.LanAccess.Token
 	if lanToken == "" {
 		lanToken = c.DDNS.Token
+	}
+	lanSecret := c.LanAccess.Secret
+	if lanSecret == "" {
+		lanSecret = c.DDNS.Secret
 	}
 	lanIP := c.LanAccess.LanIP
 	dataDir := c.ResolvedDataDir
@@ -229,13 +249,7 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 			if domain == "" {
 				domain = p.TLS.Domain
 			}
-			s.DDNS.Set(ddns.Config{
-				Provider: p.DDNS.Provider,
-				Domain:   domain,
-				Token:    p.DDNS.Token,
-				URL:      p.DDNS.URL,
-				Interval: time.Duration(p.DDNS.IntervalMinutes) * time.Minute,
-			})
+			s.DDNS.Set(ddnsConfig(&p, domain))
 		} else {
 			s.DDNS.Stop()
 		}
@@ -243,7 +257,8 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	if s.LanAccess != nil {
 		if p.LanAccess.Enabled {
 			if err := s.LanAccess.Set(lanaccess.Config{
-				Domain: p.LanAccess.Domain, Token: lanToken,
+				Domain: p.LanAccess.Domain, Provider: p.DDNS.Provider,
+				Token: lanToken, Secret: lanSecret,
 				LanIP: lanIP, DataDir: dataDir,
 			}); err != nil {
 				warnings = append(warnings, "Home network access could not start: "+err.Error())

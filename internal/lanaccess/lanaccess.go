@@ -19,10 +19,12 @@ import (
 )
 
 type Config struct {
-	Domain  string // e.g. yourname-lan.duckdns.org
-	Token   string // DuckDNS token (updates the record and solves DNS-01)
-	LanIP   string // empty = auto-detect
-	DataDir string // certificate cache location
+	Domain   string // e.g. yourname-lan.duckdns.org or lan.talaria.gg
+	Provider string // DNS provider: "duckdns" or "porkbun" (updates the record and solves DNS-01)
+	Token    string // DuckDNS token / Porkbun API key
+	Secret   string // Porkbun secret API key
+	LanIP    string // empty = auto-detect
+	DataDir  string // certificate cache location
 }
 
 // Runner owns the lan domain's record updater and certificate manager; its
@@ -58,8 +60,13 @@ func (r *Runner) Set(cfg Config) error {
 	if domain == "" {
 		return fail("no home-access domain configured")
 	}
-	if cfg.Token == "" {
-		return fail("needs the DuckDNS token")
+	provider := cfg.Provider
+	if provider == "" {
+		provider = "duckdns"
+	}
+	txt, err := ddns.NewTXTSetter(provider, cfg.Token, cfg.Secret)
+	if err != nil {
+		return fail(err.Error())
 	}
 	lanIP := strings.TrimSpace(cfg.LanIP)
 	if lanIP == "" {
@@ -73,14 +80,15 @@ func (r *Runner) Set(cfg Config) error {
 	r.domain = domain
 	r.lanIP = lanIP
 	r.rec.Set(ddns.Config{
-		Provider: "duckdns",
+		Provider: provider,
 		Domain:   domain,
 		Token:    cfg.Token,
+		Secret:   cfg.Secret,
 		IP:       lanIP,
 		Interval: 5 * time.Minute,
 	})
-	r.mgr = tlsx.NewDNS01Manager(cfg.DataDir, domain, cfg.Token, "", r.log)
-	r.log.Info("lan access enabled", "domain", domain, "lan_ip", lanIP)
+	r.mgr = tlsx.NewDNS01Manager(cfg.DataDir, domain, txt, "", r.log)
+	r.log.Info("lan access enabled", "domain", domain, "provider", provider, "lan_ip", lanIP)
 	return nil
 }
 

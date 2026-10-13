@@ -35,7 +35,8 @@ a built-in service mode, `talaria -service install|start|stop|uninstall`.)
    sudo /opt/talaria/deploy.sh ./talaria-linux-amd64
    ```
 4. Point the router's port forwards (TCP 80/443, UDP 50000) at the new box.
-   DuckDNS and the home-network domain update themselves on first start.
+   The DDNS record (DuckDNS or Porkbun) and the home-network domain update
+   themselves on first start.
 
 ## Continuous deployment
 

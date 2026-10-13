@@ -615,7 +615,7 @@ function ServerConfigSection() {
             <Input
               value={cfg.tls.domain}
               onChange={(e) => patch('tls', { domain: e.target.value })}
-              placeholder="yourname.duckdns.org"
+              placeholder="yourname.duckdns.org or yourdomain.gg"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -644,6 +644,7 @@ function ServerConfigSection() {
                 <Label>Provider</Label>
                 <Select value={cfg.ddns.provider} onChange={(e) => patch('ddns', { provider: e.target.value as ServerConfig['ddns']['provider'] })}>
                   <option value="duckdns">DuckDNS (free — duckdns.org)</option>
+                  <option value="porkbun">Porkbun (your own domain — porkbun.com)</option>
                   <option value="custom">Custom update URL</option>
                 </Select>
               </div>
@@ -655,6 +656,33 @@ function ServerConfigSection() {
                     onChange={(e) => patch('ddns', { token: e.target.value })}
                     placeholder="shown at the top of duckdns.org"
                   />
+                </div>
+              ) : cfg.ddns.provider === 'porkbun' ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Porkbun API key</Label>
+                      <Input
+                        value={cfg.ddns.token}
+                        onChange={(e) => patch('ddns', { token: e.target.value })}
+                        placeholder="pk1_…"
+                      />
+                    </div>
+                    <div>
+                      <Label>Secret API key</Label>
+                      <Input
+                        type="password"
+                        value={cfg.ddns.secret}
+                        onChange={(e) => patch('ddns', { secret: e.target.value })}
+                        placeholder="sk1_…"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-ink-2">
+                    At porkbun.com: Account → API Access to create the key pair, then on the domain's
+                    details page turn on <strong>API Access</strong>. Talaria keeps the A record for the
+                    domain above pointed at this connection.
+                  </p>
                 </div>
               ) : (
                 <div>
@@ -699,12 +727,22 @@ function ServerConfigSection() {
                 <Input
                   value={cfg.lan_access.domain}
                   onChange={(e) => patch('lan_access', { domain: e.target.value })}
-                  placeholder="yourname-lan.duckdns.org"
+                  placeholder={cfg.ddns.provider === 'porkbun' ? 'lan.yourdomain.gg' : 'yourname-lan.duckdns.org'}
                 />
                 <p className="mt-1 text-xs text-ink-2">
-                  Create this as a second free subdomain at duckdns.org (any IP — Talaria takes it
-                  over, pointing it at this machine{lanIP ? ` (${lanIP})` : ''} and fetching its
-                  certificate automatically). Uses your DuckDNS token from above.
+                  {cfg.ddns.provider === 'porkbun' ? (
+                    <>
+                      Any subdomain of your Porkbun domain — no need to create it first. Talaria
+                      points it at this machine{lanIP ? ` (${lanIP})` : ''} and fetches its
+                      certificate automatically, using the Porkbun API keys from above.
+                    </>
+                  ) : (
+                    <>
+                      Create this as a second free subdomain at duckdns.org (any IP — Talaria takes it
+                      over, pointing it at this machine{lanIP ? ` (${lanIP})` : ''} and fetching its
+                      certificate automatically). Uses your DuckDNS token from above.
+                    </>
+                  )}
                 </p>
               </div>
               {lanStatus?.active && lanStatus.cert_ok ? (

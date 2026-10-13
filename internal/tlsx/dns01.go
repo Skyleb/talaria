@@ -11,8 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,12 +26,13 @@ import (
 )
 
 // DNS01Manager obtains and renews a Let's Encrypt certificate for one domain
-// using the DNS-01 challenge with DuckDNS TXT records. This is how the
-// lan-access domain gets a trusted certificate: it resolves to a private IP,
-// which HTTP-01 validation could never reach.
+// using the DNS-01 challenge, publishing the TXT record through a DNS
+// provider (DuckDNS, Porkbun). This is how the lan-access domain gets a
+// trusted certificate: it resolves to a private IP, which HTTP-01
+// validation could never reach.
 type DNS01Manager struct {
 	domain    string
-	token     string
+	txt       ddns.TXTSetter
 	dir       string
 	directory string // ACME directory URL; "" = Let's Encrypt production
 	log       *slog.Logger
@@ -45,13 +48,13 @@ const renewBefore = 30 * 24 * time.Hour
 
 // NewDNS01Manager loads any cached certificate and starts the obtain/renew
 // loop in the background. directoryURL "" selects Let's Encrypt production.
-func NewDNS01Manager(dataDir, domain, token, directoryURL string, log *slog.Logger) *DNS01Manager {
+func NewDNS01Manager(dataDir, domain string, txt ddns.TXTSetter, directoryURL string, log *slog.Logger) *DNS01Manager {
 	if directoryURL == "" {
 		directoryURL = acme.LetsEncryptURL
 	}
 	m := &DNS01Manager{
 		domain:    strings.ToLower(domain),
-		token:     token,
+		txt:       txt,
 		dir:       filepath.Join(dataDir, "certs", "lan", strings.ToLower(domain)),
 		directory: directoryURL,
 		log:       log,
@@ -119,7 +122,7 @@ func (m *DNS01Manager) ensure(ctx context.Context) {
 	if c := m.cert.Load(); c != nil && c.Leaf != nil && time.Until(c.Leaf.NotAfter) > renewBefore {
 		return
 	}
-	obtainCtx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+	obtainCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
 	defer cancel()
 	if err := m.obtain(obtainCtx); err != nil {
 		m.setErr(err)
@@ -167,7 +170,7 @@ func (m *DNS01Manager) obtain(ctx context.Context) error {
 	defer func() {
 		clearCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		ddns.SetDuckDNSTXT(clearCtx, m.domain, m.token, "")
+		m.txt.SetTXT(clearCtx, m.domain, "")
 	}()
 	for _, zurl := range order.AuthzURLs {
 		z, err := client.GetAuthorization(ctx, zurl)
@@ -191,15 +194,14 @@ func (m *DNS01Manager) obtain(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := ddns.SetDuckDNSTXT(ctx, m.domain, m.token, txt); err != nil {
-			return fmt.Errorf("set duckdns TXT: %w", err)
+		if err := m.txt.SetTXT(ctx, m.domain, txt); err != nil {
+			return fmt.Errorf("publish TXT record: %w", err)
 		}
-		// DuckDNS is authoritative and serves the TXT immediately; a short
-		// pause avoids racing the validator's first lookup.
-		select {
-		case <-time.After(10 * time.Second):
-		case <-ctx.Done():
-			return ctx.Err()
+		// Don't race the validator: wait until the zone's own nameservers
+		// serve the record (DuckDNS is near-instant, Porkbun can take a
+		// little while).
+		if err := waitForTXT(ctx, m.domain, txt, m.log); err != nil {
+			return err
 		}
 		if _, err := client.Accept(ctx, chal); err != nil {
 			return fmt.Errorf("accept challenge: %w", err)
@@ -252,6 +254,71 @@ func (m *DNS01Manager) obtain(ctx context.Context) error {
 
 	m.cert.Store(&tls.Certificate{Certificate: chain, PrivateKey: certKey, Leaf: leaf})
 	return nil
+}
+
+// waitForTXT polls the authoritative nameservers of domain's zone until all
+// of them return want for _acme-challenge.<domain>, giving up (but not
+// failing) after two minutes. When the nameservers can't be discovered it
+// falls back to a short fixed pause. Only ctx cancellation is an error.
+func waitForTXT(ctx context.Context, domain, want string, log *slog.Logger) error {
+	name := "_acme-challenge." + domain
+	var servers []string
+	if zone, _, err := ddns.SplitZone(domain); err == nil {
+		lookupCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		nss, err := net.DefaultResolver.LookupNS(lookupCtx, zone)
+		cancel()
+		if err == nil {
+			for _, ns := range nss {
+				servers = append(servers, strings.TrimSuffix(ns.Host, "."))
+			}
+		}
+	}
+	pause := func(d time.Duration) error {
+		select {
+		case <-time.After(d):
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if len(servers) == 0 {
+		return pause(10 * time.Second)
+	}
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		if txtServedBy(ctx, servers, name, want) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			log.Warn("TXT record not visible on all nameservers yet; trying validation anyway",
+				"name", name, "nameservers", servers)
+			return nil
+		}
+		if err := pause(5 * time.Second); err != nil {
+			return err
+		}
+	}
+}
+
+// txtServedBy reports whether every server answers a TXT query for name
+// with want among the values.
+func txtServedBy(ctx context.Context, servers []string, name, want string) bool {
+	for _, server := range servers {
+		r := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, network, net.JoinHostPort(server, "53"))
+			},
+		}
+		qCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		txts, err := r.LookupTXT(qCtx, name)
+		cancel()
+		if err != nil || !slices.Contains(txts, want) {
+			return false
+		}
+	}
+	return true
 }
 
 func loadOrCreateKey(path string) (*ecdsa.PrivateKey, error) {

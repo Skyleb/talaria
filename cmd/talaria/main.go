@@ -190,16 +190,20 @@ func run(stop <-chan struct{}) {
 		if domain == "" {
 			domain = cfg.TLS.Domain
 		}
-		if domain == "" || (cfg.DDNS.Provider == "duckdns" && cfg.DDNS.Token == "") {
-			log.Error("ddns enabled but missing domain or token; updater not started")
+		dcfg := ddns.Config{
+			Provider: cfg.DDNS.Provider,
+			Domain:   domain,
+			Token:    cfg.DDNS.Token,
+			Secret:   cfg.DDNS.Secret,
+			URL:      cfg.DDNS.URL,
+			Interval: time.Duration(cfg.DDNS.IntervalMinutes) * time.Minute,
+		}
+		if domain == "" {
+			log.Error("ddns enabled but no domain set; updater not started")
+		} else if err := ddns.Validate(dcfg); err != nil {
+			log.Error("ddns enabled but misconfigured; updater not started", "err", err)
 		} else {
-			ddnsRunner.Set(ddns.Config{
-				Provider: cfg.DDNS.Provider,
-				Domain:   domain,
-				Token:    cfg.DDNS.Token,
-				URL:      cfg.DDNS.URL,
-				Interval: time.Duration(cfg.DDNS.IntervalMinutes) * time.Minute,
-			})
+			ddnsRunner.Set(dcfg)
 		}
 	}
 
@@ -250,8 +254,13 @@ func run(stop <-chan struct{}) {
 			if token == "" {
 				token = cfg.DDNS.Token
 			}
+			secret := cfg.LanAccess.Secret
+			if secret == "" {
+				secret = cfg.DDNS.Secret
+			}
 			if err := lanAccess.Set(lanaccess.Config{
-				Domain: cfg.LanAccess.Domain, Token: token,
+				Domain: cfg.LanAccess.Domain, Provider: cfg.DDNS.Provider,
+				Token: token, Secret: secret,
 				LanIP: cfg.LanAccess.LanIP, DataDir: dataDir,
 			}); err != nil {
 				log.Error("lan access not started", "err", err)

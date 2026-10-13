@@ -4,6 +4,7 @@ package ddns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,16 +16,78 @@ import (
 )
 
 type Config struct {
-	// Provider: "duckdns" is built in; "custom" calls URL verbatim
-	// (templates: {DOMAIN}, {TOKEN}).
+	// Provider: "duckdns" and "porkbun" are built in; "custom" calls URL
+	// verbatim (templates: {DOMAIN}, {TOKEN}).
 	Provider string
-	Domain   string // full hostname, e.g. skyle.duckdns.org
-	Token    string
+	Domain   string // full hostname, e.g. skyle.duckdns.org or talaria.gg
+	Token    string // DuckDNS token / Porkbun API key / custom {TOKEN}
+	Secret   string // Porkbun secret API key
 	URL      string // custom provider only
 	// IP pins the record to an explicit address (e.g. a LAN IP for the
 	// lan-access domain). Empty = the provider detects the caller's IP.
 	IP       string
 	Interval time.Duration
+}
+
+// TXTSetter publishes (or, with empty txt, clears) the TXT record Let's
+// Encrypt's DNS-01 challenge reads for domain. Where the record lives is
+// the provider's business: DuckDNS serves one TXT for the whole subdomain,
+// Porkbun gets a real _acme-challenge.<domain> record.
+type TXTSetter interface {
+	SetTXT(ctx context.Context, domain, txt string) error
+}
+
+// SupportsDNS01 reports whether provider can solve DNS-01 challenges, i.e.
+// whether NewTXTSetter will succeed for it.
+func SupportsDNS01(provider string) bool {
+	return provider == "duckdns" || provider == "porkbun"
+}
+
+// Validate reports why cfg can't run: an unknown provider, or missing
+// credentials / update URL. Messages are shown verbatim in the admin UI.
+func Validate(cfg Config) error {
+	switch cfg.Provider {
+	case "duckdns":
+		if cfg.Token == "" {
+			return errors.New("DuckDNS needs the token shown at duckdns.org")
+		}
+	case "porkbun":
+		if cfg.Token == "" || cfg.Secret == "" {
+			return errors.New("Porkbun needs the API key and secret API key (porkbun.com → Account → API Access)")
+		}
+	case "custom":
+		if cfg.URL == "" {
+			return errors.New("custom DDNS needs an update URL")
+		}
+	default:
+		return errors.New("DDNS provider must be duckdns, porkbun or custom")
+	}
+	return nil
+}
+
+// NewTXTSetter returns the TXT publisher for a provider, or an error for
+// providers that can only update an A record (custom update URLs).
+func NewTXTSetter(provider, token, secret string) (TXTSetter, error) {
+	switch provider {
+	case "duckdns":
+		if token == "" {
+			return nil, errors.New("needs the DuckDNS token")
+		}
+		return duckDNSSetter{token: token}, nil
+	case "porkbun":
+		if token == "" || secret == "" {
+			return nil, errors.New("needs the Porkbun API key and secret key")
+		}
+		return &Porkbun{APIKey: token, Secret: secret}, nil
+	default:
+		return nil, fmt.Errorf("provider %q cannot publish TXT records (needed for the certificate)", provider)
+	}
+}
+
+type duckDNSSetter struct{ token string }
+
+func (d duckDNSSetter) SetTXT(ctx context.Context, domain, txt string) error {
+	return SetDuckDNSTXT(ctx, domain, d.token, txt)
 }
 
 // Runner owns a single background update loop whose config can be swapped
@@ -111,6 +174,9 @@ func SetDuckDNSTXT(ctx context.Context, domain, token, txt string) error {
 }
 
 func updateOnce(ctx context.Context, cfg Config) error {
+	if cfg.Provider == "porkbun" {
+		return updatePorkbun(ctx, &Porkbun{APIKey: cfg.Token, Secret: cfg.Secret}, cfg)
+	}
 	var endpoint string
 	switch cfg.Provider {
 	case "duckdns":
@@ -148,4 +214,17 @@ func updateOnce(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("duckdns rejected the update (check token and domain): %q", trimmed)
 	}
 	return nil
+}
+
+// updatePorkbun points cfg.Domain's A record at cfg.IP, or at the public
+// IPv4 Porkbun sees this connection coming from when cfg.IP is empty.
+func updatePorkbun(ctx context.Context, p *Porkbun, cfg Config) error {
+	ip := cfg.IP
+	if ip == "" {
+		var err error
+		if ip, err = p.PublicIPv4(ctx); err != nil {
+			return err
+		}
+	}
+	return p.SetRecord(ctx, cfg.Domain, "A", ip)
 }

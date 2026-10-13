@@ -62,6 +62,33 @@ Other providers work via `provider = "custom"` with
 `url = "https://.../update?hostname={DOMAIN}&password={TOKEN}"`, or keep
 using your router's built-in DDNS client and skip the `[ddns]` section.
 
+### Using a domain you own (Porkbun)
+
+Prefer a real domain such as `talaria.gg`? Buy it at [Porkbun](https://porkbun.com)
+(it sells `.gg` and most other TLDs, and DNS hosting is included), then:
+
+1. Porkbun → Account → **API Access**: create an API key pair.
+2. On the domain's details page, turn on **API Access** for that domain.
+3. In Talaria, set the HTTPS domain to `talaria.gg`, choose the **Porkbun**
+   DDNS provider and paste the two keys. (Equivalent TOML:)
+
+   ```toml
+   [tls]
+   mode = "auto"
+   domain = "talaria.gg"
+
+   [ddns]
+   enabled = true
+   provider = "porkbun"
+   token = "pk1_…"    # API key
+   secret = "sk1_…"   # secret API key
+   ```
+
+Talaria creates or updates the A record itself and, if Home network access
+is on, a `lan.talaria.gg`-style subdomain plus the `_acme-challenge` TXT
+records for its certificate. Leave the domain on Porkbun's own nameservers
+(no proxy or CDN in front — calls need direct UDP).
+
 No domain? `mode = "selfsigned"` serves HTTPS on your LAN with a self-signed
 certificate (browsers warn once). Plain HTTP stays available on `:8080` for
 localhost.
@@ -70,7 +97,8 @@ localhost.
 > their own public IP from inside the network (broken NAT loopback), which
 > shows up as a blank page on LAN devices while everything works remotely.
 > Enable **Home network access** in Settings → Admin — server configuration:
-> create a second free DuckDNS subdomain (e.g. `yourname-lan`) and Talaria
+> give it a second domain (a free DuckDNS subdomain such as `yourname-lan`, or
+> any subdomain of your own Porkbun domain such as `lan.talaria.gg`) and Talaria
 > keeps it pointed at the server's LAN IP, fetches its own Let's Encrypt
 > certificate (DNS-01), and transparently 302-redirects hairpinned page loads
 > to it. No router or per-device changes. (A `[lan_dns]` DNS-server mode also

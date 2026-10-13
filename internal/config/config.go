@@ -47,14 +47,16 @@ type TLSConfig struct {
 
 // DDNSConfig makes Talaria keep a dynamic-DNS hostname updated itself —
 // no separate updater client needed. With provider "duckdns", set token
-// (from duckdns.org) and leave url empty; tls.domain is used as the hostname
-// unless domain is set here.
+// (from duckdns.org); with "porkbun" (a domain you own, DNS hosted at
+// porkbun.com) set token to the API key and secret to the secret API key.
+// tls.domain is used as the hostname unless domain is set here.
 type DDNSConfig struct {
 	Enabled  bool   `toml:"enabled"`
-	Provider string `toml:"provider"` // "duckdns" or "custom"
+	Provider string `toml:"provider"` // "duckdns", "porkbun" or "custom"
 	Domain   string `toml:"domain"`   // defaults to tls.domain
-	Token    string `toml:"token"`
-	URL      string `toml:"url"` // custom provider: templates {DOMAIN} {TOKEN}
+	Token    string `toml:"token"`    // DuckDNS token / Porkbun API key / custom {TOKEN}
+	Secret   string `toml:"secret"`   // Porkbun secret API key
+	URL      string `toml:"url"`      // custom provider: templates {DOMAIN} {TOKEN}
 	// IntervalMinutes between updates (default 5).
 	IntervalMinutes int `toml:"interval_minutes"`
 }
@@ -63,11 +65,14 @@ type DDNSConfig struct {
 // private LAN IP with its own Let's Encrypt certificate (DNS-01). Devices on
 // the home network reaching the main domain through the router's (often
 // broken) NAT loopback are redirected to it transparently — no router or
-// per-device changes needed.
+// per-device changes needed. The record and the TXT challenge go through
+// the [ddns] provider (DuckDNS or Porkbun) and its credentials unless
+// overridden here.
 type LanAccessConfig struct {
 	Enabled bool   `toml:"enabled"`
-	Domain  string `toml:"domain"` // e.g. yourname-lan.duckdns.org
+	Domain  string `toml:"domain"` // e.g. yourname-lan.duckdns.org or lan.talaria.gg
 	Token   string `toml:"token"`  // defaults to ddns.token
+	Secret  string `toml:"secret"` // defaults to ddns.secret
 	LanIP   string `toml:"lan_ip"` // defaults to auto-detect
 }
 
