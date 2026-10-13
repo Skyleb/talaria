@@ -74,7 +74,7 @@ func newEngine(udpPort int, publicIP string, maxDownlinkKbps int, log *slog.Logg
 	subIR := &interceptor.Registry{}
 	ccf, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
 		return gcc.NewSendSideBWE(
-			gcc.SendSideBWEInitialBitrate(1_000_000),
+			gcc.SendSideBWEInitialBitrate(3_000_000),
 			gcc.SendSideBWEMinBitrate(150_000),
 			gcc.SendSideBWEMaxBitrate(maxDownlinkKbps*1000),
 			gcc.SendSideBWEPacer(gcc.NewNoOpPacer()),

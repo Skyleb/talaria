@@ -24,6 +24,35 @@ func TestAllocateFirstPickFitsBudget(t *testing.T) {
 	}
 }
 
+func TestAllocateNoSignalStartsHighAndHoldsStill(t *testing.T) {
+	h := map[string]*hystState{}
+	now := time.Now()
+	r := []trackReq{req("a|cam", "cam", cam3, "auto", 1), req("b|cam", "cam", cam3, "auto", 0)}
+	// No congestion signal (budget 0): everyone gets the top layer at once.
+	got := allocate(0, 64_000, r, h, now)
+	if got["a|cam"] != "f" || got["b|cam"] != "f" {
+		t.Fatalf("no-signal pick a=%q b=%q, want f/f", got["a|cam"], got["b|cam"])
+	}
+	// Still no signal later: nothing changes.
+	got = allocate(0, 64_000, r, h, now.Add(10*time.Second))
+	if got["a|cam"] != "f" || got["b|cam"] != "f" {
+		t.Fatalf("drifted without a signal: a=%q b=%q", got["a|cam"], got["b|cam"])
+	}
+	// Congestion arrives: shed the background track first, then recover
+	// one step at a time once the signal clears.
+	got = allocate(2_000_000, 64_000, r, h, now.Add(11*time.Second))
+	if got["a|cam"] != "f" || got["b|cam"] == "f" {
+		t.Fatalf("congestion should hit b first: a=%q b=%q", got["a|cam"], got["b|cam"])
+	}
+	// Signal clears: after the cooldown and the 3 s headroom hold, b steps
+	// up one layer (not straight back to the top).
+	allocate(0, 64_000, r, h, now.Add(25*time.Second))
+	got = allocate(0, 64_000, r, h, now.Add(29*time.Second))
+	if got["b|cam"] != "h" {
+		t.Fatalf("after cooldown b should step up one layer, got %q", got["b|cam"])
+	}
+}
+
 func TestAllocateShedsLowPriorityFirst(t *testing.T) {
 	h := map[string]*hystState{
 		"a|cam": {Current: "h"},

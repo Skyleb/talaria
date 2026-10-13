@@ -425,26 +425,36 @@ func (r *Room) allocateLocked(p *Peer) {
 		}
 		reqs = append(reqs, trackReq{Key: key, Kind: dt.pt.kind, Layers: layers, Pref: pref.Quality, Priority: pref.Priority})
 	}
-	budget := r.budgetLocked(p, now)
+	sending := 0
+	for _, dt := range p.downtracks {
+		sending += dt.pt.layerBps(dt.currentLayer(), now)
+	}
+	budget := r.budgetLocked(p, now, sending)
 	targets := allocate(budget, 64_000*len(p.audioSenders), reqs, p.hyst, now)
 	for key, rid := range targets {
 		byKey[key].setTarget(rid)
 	}
 }
 
-// budgetLocked is the viewer's downlink estimate: TWCC-driven GCC once video
-// has flowed for a couple of seconds, REMB from browsers that send it as a
-// fallback, else a 1 Mbps opening assumption.
-func (r *Room) budgetLocked(p *Peer, now time.Time) int {
+// budgetLocked turns the viewer's bandwidth estimate into a congestion
+// signal. A send-side estimate hovers a little above whatever is being sent
+// and cannot see unused capacity, so it is not a ceiling: the allocator
+// gets a budget (and sheds layers) only when the estimate has fallen
+// clearly below what we are sending. Otherwise 0 = no limit, and viewers
+// get the best layer that is flowing.
+func (r *Room) budgetLocked(p *Peer, now time.Time, sendingBps int) int {
+	const congested = 0.85
+	estimate := 0
 	if p.bwe != nil && now.Sub(p.videoSince) > 2*time.Second {
-		if t := p.bwe.GetTargetBitrate(); t > 0 {
-			return t
-		}
+		estimate = p.bwe.GetTargetBitrate()
 	}
-	if p.rembBps > 0 && now.Sub(p.rembAt) < 3*time.Second {
-		return p.rembBps
+	if estimate <= 0 && p.rembBps > 0 && now.Sub(p.rembAt) < 3*time.Second {
+		estimate = p.rembBps
 	}
-	return 1_000_000
+	if estimate > 0 && sendingBps > 0 && float64(estimate) < congested*float64(sendingBps) {
+		return estimate
+	}
+	return 0
 }
 
 // nominalBps is the expected rate of a layer that has not been measured yet.

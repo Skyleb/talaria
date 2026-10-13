@@ -54,9 +54,13 @@ func rankOf(layers []layerOpt, rid string) int {
 }
 
 // allocate returns the layer each track should carry (""=paused). hyst is
+// updated in place. budgetBps <= 0 means "no congestion signal": tracks
+// start on their best active layer and only step down when a real budget
+// says so.
 // updated in place.
 func allocate(budgetBps, audioBps int, reqs []trackReq, hyst map[string]*hystState, now time.Time) map[string]string {
 	out := map[string]string{}
+	limited := budgetBps > 0
 	budget := budgetBps - audioBps
 	if budget < 0 {
 		budget = 0
@@ -78,7 +82,9 @@ func allocate(budgetBps, audioBps int, reqs []trackReq, hyst map[string]*hystSta
 			rid := pickFixed(t.Layers, t.Pref)
 			apply(h, rid, now)
 			out[t.Key] = rid
-			budget -= bpsOf(t.Layers, rid)
+			if limited {
+				budget -= bpsOf(t.Layers, rid)
+			}
 		}
 	}
 	sort.SliceStable(auto, func(i, j int) bool {
@@ -97,13 +103,13 @@ func allocate(budgetBps, audioBps int, reqs []trackReq, hyst map[string]*hystSta
 		h := hyst[t.Key]
 		rid := h.Current
 		if rankOf(t.Layers, rid) < 0 {
-			// Not active any more (or nothing yet): take the best that fits
-			// the whole budget alone, else the smallest.
+			// Not active any more (or nothing yet): with no congestion signal
+			// take the best layer; otherwise the best that fits the budget.
 			rid = ""
 			if len(t.Layers) > 0 {
 				rid = t.Layers[0].RID
 				for _, l := range t.Layers {
-					if l.Bps <= budget {
+					if !limited || l.Bps <= budget {
 						rid = l.RID
 					}
 				}
@@ -120,7 +126,7 @@ func allocate(budgetBps, audioBps int, reqs []trackReq, hyst map[string]*hystSta
 	}
 
 	// Congestion: shed from the lowest priority upwards until we fit.
-	for total() > budget {
+	for limited && total() > budget {
 		shed := false
 		for i := len(auto) - 1; i >= 0; i-- {
 			t := auto[i]
@@ -149,7 +155,7 @@ func allocate(budgetBps, audioBps int, reqs []trackReq, hyst map[string]*hystSta
 	}
 
 	// Headroom: step the most important track up one layer after a hold.
-	if len(downgraded) == 0 && total() > 0 && float64(budget) >= upgradeHeadroom*float64(total()) {
+	if len(downgraded) == 0 && total() > 0 && (!limited || float64(budget) >= upgradeHeadroom*float64(total())) {
 		for _, t := range auto {
 			h := hyst[t.Key]
 			r := rankOf(t.Layers, cur[t.Key])

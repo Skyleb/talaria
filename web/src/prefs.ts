@@ -20,7 +20,9 @@ export interface AVPrefs {
   ducking: { enabled: boolean; amount: number }
 }
 
-const KEY = 'talaria-av-prefs'
+// v2: defaults changed (balanced mic, leveler and isolation off); older
+// saved prefs are left behind on purpose so everyone gets the new defaults.
+const KEY = 'talaria-av-prefs-v2'
 
 export function isMobile(): boolean {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
@@ -33,12 +35,12 @@ export function isLowPower(): boolean {
 }
 
 const DEFAULTS: AVPrefs = {
-  micTier: 'voice',
+  micTier: 'balanced',
   camPreset: isLowPower() ? '360p' : '720p',
   screenPreset: 'text',
   highPass: true,
-  voiceIsolation: isMobile(),
-  leveler: true,
+  voiceIsolation: false,
+  leveler: false,
   ducking: { enabled: true, amount: 0.6 },
 }
 

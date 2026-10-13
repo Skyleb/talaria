@@ -21,7 +21,7 @@ export const MIC_TIERS: Record<MicTier, MicTierSpec> = {
     hint: 'Clear speech, lowest data. Echo cancellation and noise suppression on.',
     maxBitrate: 32_000,
     stereo: false,
-    fmtp: { stereo: '0', 'sprop-stereo': '0', maxaveragebitrate: '32000', useinbandfec: '1', usedtx: '1' },
+    fmtp: { stereo: '0', 'sprop-stereo': '0', maxaveragebitrate: '32000', useinbandfec: '1', usedtx: '0' },
   },
   balanced: {
     label: 'Balanced (64 kbps)',
@@ -97,11 +97,11 @@ export interface CamPresetSpec {
 
 export const CAM_PRESETS: Record<CamPreset, CamPresetSpec> = {
   '360p': { label: '360p · 30 fps', width: 640, height: 360, fps: 30, kbps: 600 },
-  '720p': { label: '720p · 30 fps', width: 1280, height: 720, fps: 30, kbps: 1500 },
-  '1080p': { label: '1080p · 30 fps', width: 1920, height: 1080, fps: 30, kbps: 3000 },
-  '1080p60': { label: '1080p · 60 fps', width: 1920, height: 1080, fps: 60, kbps: 4500, heavy: true },
-  '1440p': { label: '1440p · 30 fps', width: 2560, height: 1440, fps: 30, kbps: 6000, heavy: true },
-  '1440p60': { label: '1440p · 60 fps', width: 2560, height: 1440, fps: 60, kbps: 9000, heavy: true },
+  '720p': { label: '720p · 30 fps', width: 1280, height: 720, fps: 30, kbps: 2500 },
+  '1080p': { label: '1080p · 30 fps', width: 1920, height: 1080, fps: 30, kbps: 4000 },
+  '1080p60': { label: '1080p · 60 fps', width: 1920, height: 1080, fps: 60, kbps: 6000, heavy: true },
+  '1440p': { label: '1440p · 30 fps', width: 2560, height: 1440, fps: 30, kbps: 8000, heavy: true },
+  '1440p60': { label: '1440p · 60 fps', width: 2560, height: 1440, fps: 60, kbps: 11000, heavy: true },
   '2160p': { label: '4K · 30 fps', width: 3840, height: 2160, fps: 30, kbps: 12000, heavy: true },
 }
 

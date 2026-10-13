@@ -47,7 +47,7 @@ const SPEAK_HOLD_MS = 300
 const AGC_TARGET_DB = -20
 const AGC_STEP_DB = 0.5
 const AGC_MIN_DB = -6
-const AGC_MAX_DB = 12
+const AGC_MAX_DB = 6
 const DUCK_ATTACK_MS = 80
 const DUCK_RELEASE_MS = 800
 
@@ -58,7 +58,7 @@ let timer: number | null = null
 const feeds = new Map<string, Feed>()
 let local: Local | null = null
 let localMuted = false
-let levelerOn = true
+let levelerOn = false
 let deafened = false
 let ducking = { enabled: true, amount: 0.6 }
 let duckGain = 1
@@ -106,9 +106,9 @@ function resume() {
 
 function applyLeveler(c: DynamicsCompressorNode) {
   if (levelerOn) {
-    c.threshold.value = -24
-    c.knee.value = 12
-    c.ratio.value = 4
+    c.threshold.value = -18
+    c.knee.value = 10
+    c.ratio.value = 2
     c.attack.value = 0.01
     c.release.value = 0.25
   } else {

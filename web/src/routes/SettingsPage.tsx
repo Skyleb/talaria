@@ -559,8 +559,8 @@ function VoiceVideoSection() {
           <Toggle
             checked={prefs.leveler}
             onChange={(v) => set({ leveler: v })}
-            label="Even out voices"
-            hint="Quiet people come up, loud people come down. A hard limiter always protects your ears either way."
+            label="Even out voices (gentle leveler)"
+            hint="Quiet people come up a little, loud people come down a little. Off by default; the hard limiter that stops anyone being painfully loud is always on."
           />
           <Toggle
             checked={prefs.ducking.enabled}
