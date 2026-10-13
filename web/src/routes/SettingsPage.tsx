@@ -906,6 +906,24 @@ function ServerConfigSection() {
           <p className="text-xs text-ink-2">
             Forward this UDP port on your router so remote friends can join calls.
           </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label>Camera cap (kbps)</Label>
+              <Input type="number" value={cfg.webrtc.max_cam_kbps || ''} onChange={(e) => patch('webrtc', { max_cam_kbps: num(e.target.value) })} />
+            </div>
+            <div>
+              <Label>Screen cap (kbps)</Label>
+              <Input type="number" value={cfg.webrtc.max_screen_kbps || ''} onChange={(e) => patch('webrtc', { max_screen_kbps: num(e.target.value) })} />
+            </div>
+            <div>
+              <Label>Per-viewer download (kbps)</Label>
+              <Input type="number" value={cfg.webrtc.max_downlink_kbps || ''} onChange={(e) => patch('webrtc', { max_downlink_kbps: num(e.target.value) })} />
+            </div>
+          </div>
+          <p className="text-xs text-ink-2">
+            Upload caps bound the top simulcast layer each person sends (lower them if your home upload is tight — the server
+            re-sends every layer to every viewer). The download cap bounds the Auto quality estimate per viewer.
+          </p>
         </div>
 
         <div className="space-y-2">

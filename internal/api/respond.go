@@ -38,6 +38,8 @@ type Server struct {
 	Push *push.Sender
 	// Listen runs synchronized listening sessions.
 	Listen *listen.Service
+	// Calls lets the admin config endpoint hot-apply call upload caps.
+	Calls CallCaps
 
 	// cfgMu serializes admin edits to Config.
 	cfgMu sync.Mutex

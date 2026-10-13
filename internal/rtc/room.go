@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/skyleb/talaria/internal/model"
@@ -52,7 +54,11 @@ type Peer struct {
 	audioSenders map[string]*webrtc.RTPSender // uid -> sender for a shared audio track
 	downtracks   map[string]*downtrack        // uid -> per-subscriber video track
 	prefs        map[string]subPref           // "user|kind" -> viewer's quality preference
+	hyst         map[string]*hystState        // "user|kind" -> layer switching history
 	lastLayers   string                       // last rtc.layers payload sent (JSON)
+	bwe          cc.BandwidthEstimator        // downlink estimate from the viewer's TWCC feedback
+	videoSince   time.Time                    // when video first flowed to this viewer
+	allocPending atomic.Bool
 	rembBps      int
 	rembAt       time.Time
 
@@ -109,18 +115,36 @@ func (r *Room) join(userID string) (*Peer, error) {
 		audioSenders: map[string]*webrtc.RTPSender{},
 		downtracks:   map[string]*downtrack{},
 		prefs:        map[string]subPref{},
+		hyst:         map[string]*hystState{},
 	}
 
-	pub, err := r.mgr.api.NewPeerConnection(webrtc.Configuration{})
+	pub, err := r.mgr.eng.pubAPI.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		return nil, err
 	}
-	sub, err := r.mgr.api.NewPeerConnection(webrtc.Configuration{})
+	sub, bwe, err := r.mgr.eng.newSubPC()
 	if err != nil {
 		pub.Close()
 		return nil, err
 	}
-	p.pub, p.sub = pub, sub
+	p.pub, p.sub, p.bwe = pub, sub, bwe
+	if bwe != nil {
+		// Re-pick layers soon after the viewer's estimate moves (debounced;
+		// the ticker also re-allocates every second).
+		bwe.OnTargetBitrateChange(func(int) {
+			if p.allocPending.CompareAndSwap(false, true) {
+				time.AfterFunc(250*time.Millisecond, func() {
+					p.allocPending.Store(false)
+					r.mu.Lock()
+					if !p.closed {
+						r.allocateLocked(p)
+						r.publishLayersLocked(p)
+					}
+					r.mu.Unlock()
+				})
+			}
+		})
+	}
 
 	pub.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
@@ -313,15 +337,70 @@ func drainAudioRTCP(sender *webrtc.RTPSender) {
 	}
 }
 
-// allocateLocked picks the layer each of p's downtracks should carry. Phase
-// 5 adds the bandwidth budget; for now a viewer's choice wins and Auto means
-// the best layer that is actually flowing. Must hold r.mu.
+// allocateLocked picks the layer each of p's downtracks should carry from
+// the viewer's preferences and bandwidth budget (see allocator.go). Must
+// hold r.mu.
 func (r *Room) allocateLocked(p *Peer) {
 	now := time.Now()
-	for _, dt := range p.downtracks {
-		pref := p.prefs[dt.pt.owner.userID+"|"+dt.pt.kind]
-		dt.setTarget(chooseLayer(dt.pt.activeLayers(now), pref.Quality))
+	if len(p.downtracks) == 0 {
+		return
 	}
+	if p.videoSince.IsZero() {
+		p.videoSince = now
+	}
+	reqs := make([]trackReq, 0, len(p.downtracks))
+	byKey := map[string]*downtrack{}
+	for _, dt := range p.downtracks {
+		key := dt.pt.owner.userID + "|" + dt.pt.kind
+		byKey[key] = dt
+		pref := p.prefs[key]
+		var layers []layerOpt
+		for _, l := range dt.pt.activeLayers(now) {
+			bps := l.Bps
+			if bps <= 0 {
+				bps = nominalBps(dt.pt.kind, l.RID)
+			}
+			layers = append(layers, layerOpt{RID: l.RID, Bps: bps})
+		}
+		reqs = append(reqs, trackReq{Key: key, Kind: dt.pt.kind, Layers: layers, Pref: pref.Quality, Priority: pref.Priority})
+	}
+	budget := r.budgetLocked(p, now)
+	targets := allocate(budget, 64_000*len(p.audioSenders), reqs, p.hyst, now)
+	for key, rid := range targets {
+		byKey[key].setTarget(rid)
+	}
+}
+
+// budgetLocked is the viewer's downlink estimate: TWCC-driven GCC once video
+// has flowed for a couple of seconds, REMB from browsers that send it as a
+// fallback, else a 1 Mbps opening assumption.
+func (r *Room) budgetLocked(p *Peer, now time.Time) int {
+	if p.bwe != nil && now.Sub(p.videoSince) > 2*time.Second {
+		if t := p.bwe.GetTargetBitrate(); t > 0 {
+			return t
+		}
+	}
+	if p.rembBps > 0 && now.Sub(p.rembAt) < 3*time.Second {
+		return p.rembBps
+	}
+	return 1_000_000
+}
+
+// nominalBps is the expected rate of a layer that has not been measured yet.
+func nominalBps(kind, rid string) int {
+	if kind == kindScreen {
+		if rid == "h" {
+			return 500_000
+		}
+		return 2_000_000
+	}
+	switch rid {
+	case "q":
+		return 150_000
+	case "h":
+		return 500_000
+	}
+	return 1_200_000
 }
 
 func (r *Room) allocateAll() {
@@ -332,29 +411,6 @@ func (r *Room) allocateAll() {
 			r.allocateLocked(p)
 		}
 	}
-}
-
-// chooseLayer maps a quality preference onto the layers currently flowing
-// (smallest first): a fixed choice falls back to the nearest smaller layer
-// that is active, Auto takes the largest, off pauses.
-func chooseLayer(layers []layerInfo, quality string) string {
-	if len(layers) == 0 {
-		return ""
-	}
-	switch quality {
-	case "off":
-		return ""
-	case "", "auto":
-		return layers[len(layers)-1].RID
-	}
-	want := layerRank(quality)
-	best := layers[0].RID
-	for _, l := range layers {
-		if layerRank(l.RID) <= want {
-			best = l.RID
-		}
-	}
-	return best
 }
 
 // handleSubscribe stores a viewer's per-stream preferences and re-allocates.

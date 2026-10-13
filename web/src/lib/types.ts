@@ -243,6 +243,9 @@ export interface ServerConfig {
   webrtc: {
     udp_port: number
     public_ip: string
+    max_cam_kbps: number
+    max_screen_kbps: number
+    max_downlink_kbps: number
   }
 }
 

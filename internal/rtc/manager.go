@@ -33,7 +33,7 @@ type Publisher interface {
 }
 
 type Manager struct {
-	api   *webrtc.API
+	eng   *engine
 	store *store.Store
 	pub   Publisher
 	log   *slog.Logger
@@ -87,8 +87,8 @@ func (m *Manager) SetRingNotifier(fn func(channelID, fromUserID string, toUserID
 	m.ring = fn
 }
 
-func NewManager(st *store.Store, pub Publisher, log *slog.Logger, udpPort int, publicIP string) (*Manager, error) {
-	api, err := newEngine(udpPort, publicIP, log)
+func NewManager(st *store.Store, pub Publisher, log *slog.Logger, udpPort int, publicIP string, maxDownlinkKbps int) (*Manager, error) {
+	eng, err := newEngine(udpPort, publicIP, maxDownlinkKbps, log)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func NewManager(st *store.Store, pub Publisher, log *slog.Logger, udpPort int, p
 		log.Error("end dangling calls", "err", err)
 	}
 	return &Manager{
-		api: api, store: st, pub: pub, log: log,
+		eng: eng, store: st, pub: pub, log: log,
 		rooms: map[string]*Room{}, userRoom: map[string]*Room{},
 	}, nil
 }

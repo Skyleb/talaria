@@ -151,18 +151,21 @@ func run(stop <-chan struct{}) {
 	} else {
 		log.Warn("webrtc has no public ip; calls will only work on the LAN")
 	}
-	sfu, err := rtc.NewManager(st, hub, log, cfg.WebRTC.UDPPort, publicIP)
+	var srvCalls api.CallCaps
+	sfu, err := rtc.NewManager(st, hub, log, cfg.WebRTC.UDPPort, publicIP, cfg.WebRTC.MaxDownlinkKbps)
 	if err != nil {
 		log.Error("start webrtc sfu (voice/video disabled)", "err", err)
 	} else {
 		sfu.SetCaps(cfg.WebRTC.MaxCamKbps, cfg.WebRTC.MaxScreenKbps)
 		hub.SetCallHandler(sfu)
+		srvCalls = sfu
 	}
 
 	srv := &api.Server{
 		Store: st, Hub: hub, Auth: authMgr, Blobs: blobs,
 		Config: cfg, Log: log, Version: version,
 	}
+	srv.Calls = srvCalls
 	srv.StartAttachmentGC()
 	startSessionGC(st, log)
 

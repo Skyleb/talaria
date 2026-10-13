@@ -48,9 +48,17 @@ type configPayload struct {
 		GiphyAPIKey string `json:"giphy_api_key"`
 	} `json:"gifs"`
 	WebRTC struct {
-		UDPPort  int    `json:"udp_port"`
-		PublicIP string `json:"public_ip"`
+		UDPPort         int    `json:"udp_port"`
+		PublicIP        string `json:"public_ip"`
+		MaxCamKbps      int    `json:"max_cam_kbps"`
+		MaxScreenKbps   int    `json:"max_screen_kbps"`
+		MaxDownlinkKbps int    `json:"max_downlink_kbps"`
 	} `json:"webrtc"`
+}
+
+// CallCaps is the slice of the SFU the admin config endpoint needs.
+type CallCaps interface {
+	SetCaps(camKbps, screenKbps int)
 }
 
 func (s *Server) configSnapshot() configPayload {
@@ -77,6 +85,9 @@ func (s *Server) configSnapshot() configPayload {
 	p.Gifs.GiphyAPIKey = c.Gifs.GiphyAPIKey
 	p.WebRTC.UDPPort = c.WebRTC.UDPPort
 	p.WebRTC.PublicIP = c.WebRTC.PublicIP
+	p.WebRTC.MaxCamKbps = c.WebRTC.MaxCamKbps
+	p.WebRTC.MaxScreenKbps = c.WebRTC.MaxScreenKbps
+	p.WebRTC.MaxDownlinkKbps = c.WebRTC.MaxDownlinkKbps
 	return p
 }
 
@@ -99,6 +110,15 @@ func validateConfig(p *configPayload) string {
 		return "DDNS provider must be duckdns, porkbun or custom"
 	case !validPort(p.WebRTC.UDPPort):
 		return "call media UDP port must be 1-65535"
+	}
+	if p.WebRTC.MaxCamKbps < 200 || p.WebRTC.MaxCamKbps > 20000 {
+		return "camera upload cap must be 200-20000 kbps"
+	}
+	if p.WebRTC.MaxScreenKbps < 200 || p.WebRTC.MaxScreenKbps > 50000 {
+		return "screen share upload cap must be 200-50000 kbps"
+	}
+	if p.WebRTC.MaxDownlinkKbps < 500 || p.WebRTC.MaxDownlinkKbps > 200000 {
+		return "per-viewer download cap must be 500-200000 kbps"
 	}
 	if p.DDNS.IntervalMinutes < 1 {
 		p.DDNS.IntervalMinutes = 5
@@ -203,6 +223,7 @@ func restartRequired(old, new configPayload) []string {
 	add(old.TLS.HTTPSPort != new.TLS.HTTPSPort, "HTTPS port")
 	add(old.WebRTC.UDPPort != new.WebRTC.UDPPort, "call media UDP port")
 	add(old.WebRTC.PublicIP != new.WebRTC.PublicIP, "public IP override")
+	add(old.WebRTC.MaxDownlinkKbps != new.WebRTC.MaxDownlinkKbps, "per-viewer download cap")
 	return out
 }
 
@@ -285,11 +306,17 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	dataDir := c.ResolvedDataDir
 	c.WebRTC.UDPPort = p.WebRTC.UDPPort
 	c.WebRTC.PublicIP = p.WebRTC.PublicIP
+	c.WebRTC.MaxCamKbps = p.WebRTC.MaxCamKbps
+	c.WebRTC.MaxScreenKbps = p.WebRTC.MaxScreenKbps
+	c.WebRTC.MaxDownlinkKbps = p.WebRTC.MaxDownlinkKbps
 	err := c.Save()
 	s.cfgMu.Unlock()
 	if err != nil {
 		serverError(w, s.Log, err)
 		return
+	}
+	if s.Calls != nil {
+		s.Calls.SetCaps(p.WebRTC.MaxCamKbps, p.WebRTC.MaxScreenKbps)
 	}
 
 	// DDNS and LAN DNS hot-apply; everything else that changed is reported
