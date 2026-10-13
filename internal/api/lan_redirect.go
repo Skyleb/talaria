@@ -38,6 +38,10 @@ func (s *Server) lanRedirect(next http.Handler) http.Handler {
 		}
 		remote, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil || !slices.Contains(s.publicIPs(pub), remote) {
+			// A page load on the main domain from a non-hairpinned source:
+			// a genuinely remote visitor, or something unexpected — log the
+			// verdict so redirect problems are diagnosable from talaria.log.
+			s.Log.Info("lan redirect: pass-through", "remote", remote, "path", r.URL.Path)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -45,9 +49,11 @@ func (s *Server) lanRedirect(next http.Handler) http.Handler {
 		// (DNS rebind protection) would strand it; in that case keep serving
 		// over the hairpin instead.
 		if !s.lanResolvable(lanDomain, s.LanAccess.LanIP()) {
+			s.Log.Warn("lan redirect: lan domain not resolvable here; serving over hairpin", "remote", remote)
 			next.ServeHTTP(w, r)
 			return
 		}
+		s.Log.Info("lan redirect: 302", "remote", remote, "path", r.URL.Path)
 		w.Header().Set("Cache-Control", "no-store")
 		http.Redirect(w, r, "https://"+lanDomain+r.URL.RequestURI(), http.StatusFound)
 	})

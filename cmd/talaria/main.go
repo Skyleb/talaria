@@ -99,10 +99,13 @@ func main() {
 	hub := gateway.NewHub(st, log)
 
 	// Phase 2: the embedded SFU for voice/video/screen share. The public IP
-	// (for remote callers' ICE) comes from config, else the DDNS domain.
+	// (for remote callers' ICE) comes from config, else the DDNS domain —
+	// resolved on the wire (landns.ResolveA): the OS resolver may be fed by
+	// a hosts-file entry or split DNS pointing the domain at the LAN IP,
+	// and advertising that gives remote callers no reachable candidate.
 	publicIP := cfg.WebRTC.PublicIP
 	if publicIP == "" && cfg.TLS.Domain != "" {
-		if ips, err := net.LookupIP(cfg.TLS.Domain); err == nil {
+		if ips, err := landns.ResolveA(cfg.TLS.Domain, []string{"1.1.1.1:53", "8.8.8.8:53"}); err == nil {
 			for _, ip := range ips {
 				if v4 := ip.To4(); v4 != nil && !v4.IsPrivate() && !v4.IsLoopback() {
 					publicIP = v4.String()
@@ -110,6 +113,11 @@ func main() {
 				}
 			}
 		}
+	}
+	if publicIP != "" {
+		log.Info("webrtc advertising public ip", "ip", publicIP)
+	} else {
+		log.Warn("webrtc has no public ip; calls will only work on the LAN")
 	}
 	sfu, err := rtc.NewManager(st, hub, log, cfg.WebRTC.UDPPort, publicIP)
 	if err != nil {
