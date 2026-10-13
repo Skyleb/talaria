@@ -80,7 +80,6 @@ func (s *Server) Router() http.Handler {
 	authed.HandleFunc("GET /api/v1/channels/{id}/playlists", s.handleListPlaylists)
 	authed.HandleFunc("GET /api/v1/listen/search", s.handleListenSearch)
 	authed.HandleFunc("GET /api/v1/gifs/status", s.handleGifStatus)
-	authed.HandleFunc("GET /api/v1/gifs/search", s.handleGifSearch)
 	authed.HandleFunc("GET /api/v1/search", s.handleSearch)
 	authed.HandleFunc("DELETE /api/v1/playlists/{id}", s.handleDeletePlaylist)
 	authed.HandleFunc("PUT /api/v1/channels/{id}/mute", s.handleMuteChannel)

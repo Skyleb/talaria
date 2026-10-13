@@ -221,7 +221,7 @@ export interface ServerConfig {
     api_key: string
   }
   gifs: {
-    tenor_api_key: string
+    giphy_api_key: string
   }
   webrtc: {
     udp_port: number

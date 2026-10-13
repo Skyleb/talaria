@@ -90,10 +90,11 @@ type YouTubeConfig struct {
 	APIKey string `toml:"api_key"`
 }
 
-// GifsConfig: GIF search in the composer uses Tenor, which needs a (free)
-// API key from Google Cloud. Without one the GIF button explains that.
+// GifsConfig: GIF search in the composer uses GIPHY, which needs a (free)
+// developer key. Without one the GIF button explains that. (Tenor stopped
+// taking new API clients in January 2026.)
 type GifsConfig struct {
-	TenorAPIKey string `toml:"tenor_api_key"`
+	GiphyAPIKey string `toml:"giphy_api_key"`
 }
 
 // WebRTCConfig is written now so Phase 2 (voice/video SFU) is purely additive.

@@ -745,15 +745,15 @@ function ServerConfigSection() {
         <div className="space-y-3">
           <SubHead>Chat</SubHead>
           <div>
-            <Label>Tenor API key (for GIF search)</Label>
+            <Label>GIPHY API key (for GIF search)</Label>
             <Input
-              value={cfg.gifs?.tenor_api_key ?? ''}
-              onChange={(e) => patch('gifs', { tenor_api_key: e.target.value })}
+              value={cfg.gifs?.giphy_api_key ?? ''}
+              onChange={(e) => patch('gifs', { giphy_api_key: e.target.value })}
               placeholder="Paste a key to turn on the GIF button"
             />
             <p className="mt-1 text-xs text-ink-2">
-              Free from Google Cloud: create a project, enable the "Tenor API", and make an API key. Without
-              one the GIF button explains that search is off.
+              Free: sign up at developers.giphy.com, create an app, and copy its key. A beta key allows 100
+              searches an hour, plenty for a home server. Without one the GIF button explains that search is off.
             </p>
           </div>
         </div>

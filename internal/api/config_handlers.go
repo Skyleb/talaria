@@ -42,7 +42,7 @@ type configPayload struct {
 		APIKey string `json:"api_key"`
 	} `json:"youtube"`
 	Gifs struct {
-		TenorAPIKey string `json:"tenor_api_key"`
+		GiphyAPIKey string `json:"giphy_api_key"`
 	} `json:"gifs"`
 	WebRTC struct {
 		UDPPort  int    `json:"udp_port"`
@@ -70,7 +70,7 @@ func (s *Server) configSnapshot() configPayload {
 	p.LanAccess.Enabled = c.LanAccess.Enabled
 	p.LanAccess.Domain = c.LanAccess.Domain
 	p.YouTube.APIKey = c.YouTube.APIKey
-	p.Gifs.TenorAPIKey = c.Gifs.TenorAPIKey
+	p.Gifs.GiphyAPIKey = c.Gifs.GiphyAPIKey
 	p.WebRTC.UDPPort = c.WebRTC.UDPPort
 	p.WebRTC.PublicIP = c.WebRTC.PublicIP
 	return p
@@ -204,7 +204,7 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	c.LanAccess.Enabled = p.LanAccess.Enabled
 	c.LanAccess.Domain = strings.TrimSpace(p.LanAccess.Domain)
 	c.YouTube.APIKey = strings.TrimSpace(p.YouTube.APIKey)
-	c.Gifs.TenorAPIKey = strings.TrimSpace(p.Gifs.TenorAPIKey)
+	c.Gifs.GiphyAPIKey = strings.TrimSpace(p.Gifs.GiphyAPIKey)
 	lanToken := c.LanAccess.Token
 	if lanToken == "" {
 		lanToken = c.DDNS.Token

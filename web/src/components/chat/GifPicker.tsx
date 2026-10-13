@@ -1,5 +1,7 @@
-// GifPicker: search Tenor and send a GIF with one tap. Shown as a popover
-// above the composer; an empty search shows what is trending.
+// GifPicker: search GIPHY and send a GIF with one tap. Shown as a popover
+// above the composer; an empty search shows what is trending. The browser
+// talks to GIPHY directly (their keys are meant to be used client-side and
+// their terms ask for that); the server only hands out the configured key.
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Search, X } from 'lucide-react'
@@ -16,10 +18,37 @@ export interface Gif {
   height: number
 }
 
+interface GiphyImage {
+  url?: string
+  width?: string
+  height?: string
+}
+interface GiphyGif {
+  id: string
+  title?: string
+  images?: Record<string, GiphyImage | undefined>
+}
+
+function toGif(g: GiphyGif): Gif | null {
+  const img = g.images ?? {}
+  // downsized keeps the full picture under ~2 MB; fall back to the original.
+  const full = img.downsized?.url ? img.downsized : img.original
+  const preview = img.fixed_width?.url ? img.fixed_width : full
+  if (!full?.url) return null
+  return {
+    id: g.id,
+    title: g.title ?? '',
+    url: full.url,
+    preview: preview?.url ?? full.url,
+    width: Number(full.width ?? 0),
+    height: Number(full.height ?? 0),
+  }
+}
+
 export function GifPicker({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (gif: Gif) => void }) {
   const me = useApp((s) => s.me)
   const navigate = useNavigate()
-  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [key, setKey] = useState<string | null | undefined>(undefined) // undefined = loading, null = not set up
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Gif[]>([])
   const [loading, setLoading] = useState(false)
@@ -29,26 +58,43 @@ export function GifPicker({ open, onClose, onPick }: { open: boolean; onClose: (
     if (!open) return
     setQuery('')
     setError('')
-    api.get<{ enabled: boolean }>('/api/v1/gifs/status').then((r) => setEnabled(r.enabled)).catch(() => setEnabled(false))
+    api
+      .get<{ enabled: boolean; key?: string }>('/api/v1/gifs/status')
+      .then((r) => setKey(r.enabled && r.key ? r.key : null))
+      .catch(() => setKey(null))
   }, [open])
 
   useEffect(() => {
-    if (!open || enabled !== true) return
+    if (!open || !key) return
+    const ctrl = new AbortController()
     const t = setTimeout(async () => {
       setLoading(true)
       setError('')
       try {
-        const r = await api.get<{ results: Gif[] }>(`/api/v1/gifs/search?q=${encodeURIComponent(query.trim())}`)
-        setResults(r.results ?? [])
+        const q = query.trim()
+        const params = new URLSearchParams({ api_key: key, limit: '30', rating: 'pg-13' })
+        let endpoint = 'https://api.giphy.com/v1/gifs/trending'
+        if (q) {
+          params.set('q', q.slice(0, 50))
+          endpoint = 'https://api.giphy.com/v1/gifs/search'
+        }
+        const res = await fetch(`${endpoint}?${params}`, { signal: ctrl.signal })
+        if (!res.ok) throw new Error(res.status === 429 ? 'GIF search is busy right now, try again in a minute.' : `GIPHY returned ${res.status}`)
+        const body = (await res.json()) as { data?: GiphyGif[] }
+        setResults((body.data ?? []).map(toGif).filter((g): g is Gif => !!g))
       } catch (e: any) {
+        if (e?.name === 'AbortError') return
         setError(e?.message ?? 'Search failed')
         setResults([])
       } finally {
         setLoading(false)
       }
     }, 300)
-    return () => clearTimeout(t)
-  }, [open, enabled, query])
+    return () => {
+      clearTimeout(t)
+      ctrl.abort()
+    }
+  }, [open, key, query])
 
   useEffect(() => {
     if (!open) return
@@ -71,7 +117,7 @@ export function GifPicker({ open, onClose, onPick }: { open: boolean; onClose: (
             placeholder="Search GIFs"
             className="pl-9"
             autoFocus
-            disabled={enabled !== true}
+            disabled={!key}
           />
         </div>
         <button onClick={onClose} title="Close" className="rounded-lg p-1.5 text-ink-2 hover:bg-bg-3 hover:text-ink">
@@ -80,12 +126,12 @@ export function GifPicker({ open, onClose, onPick }: { open: boolean; onClose: (
       </div>
 
       <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
-        {enabled === false && (
+        {key === null && (
           <div className="px-2 py-6 text-center text-sm text-ink-1">
             <p>GIF search isn't set up on this server yet.</p>
             {me?.is_admin ? (
               <p className="mt-2">
-                It needs a free Tenor key.{' '}
+                It needs a free GIPHY key.{' '}
                 <button className="text-accent hover:underline" onClick={() => navigate('/app/settings')}>
                   Add one in Settings → Admin → Server configuration
                 </button>
@@ -96,14 +142,14 @@ export function GifPicker({ open, onClose, onPick }: { open: boolean; onClose: (
             )}
           </div>
         )}
-        {enabled && error && <p className="px-2 py-4 text-center text-sm text-danger">{error}</p>}
-        {enabled && !error && loading && results.length === 0 && (
+        {key && error && <p className="px-2 py-4 text-center text-sm text-danger">{error}</p>}
+        {key && !error && loading && results.length === 0 && (
           <p className="px-2 py-6 text-center text-sm text-ink-2">Loading…</p>
         )}
-        {enabled && !error && !loading && results.length === 0 && (
+        {key && !error && !loading && results.length === 0 && (
           <p className="px-2 py-6 text-center text-sm text-ink-2">No GIFs found.</p>
         )}
-        {enabled && results.length > 0 && (
+        {key && results.length > 0 && (
           <div className="grid grid-cols-3 gap-1">
             {results.map((g) => (
               <button
@@ -118,7 +164,7 @@ export function GifPicker({ open, onClose, onPick }: { open: boolean; onClose: (
           </div>
         )}
       </div>
-      {enabled && <p className="mt-1 text-right text-[10px] text-ink-2">Powered by Tenor</p>}
+      {key && <p className="mt-1 text-right text-[10px] font-semibold tracking-wide text-ink-2">Powered by GIPHY</p>}
     </div>
   )
 }
