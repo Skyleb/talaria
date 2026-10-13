@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { Bell, BellOff, Hash, Headphones, LogOut, Pencil, Phone, Search, UserPlus, Users } from 'lucide-react'
 import { api } from '../lib/api'
-import { dmTitle, displayName, useApp } from '../store'
+import { dmTitle, displayName, useApp, isNotesChat } from '../store'
 import { useCall } from '../call'
 import { PageHeader } from './AppShell'
 import { MessageList } from '../components/chat/MessageList'
@@ -64,6 +64,7 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
   const isDM = channel.kind === 'dm'
   const title = isDM ? dmTitle(channel, me.id, users) : `${channel.name}`
   const isGroupChat = isDM && ((channel.participants?.length ?? 0) > 2 || !!channel.name)
+  const isNotes = isDM && isNotesChat(channel, me.id)
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -72,7 +73,7 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
           onMenu={onMenu}
           icon={isDM ? undefined : <Hash size={18} />}
           title={title}
-          subtitle={channel.topic || undefined}
+          subtitle={isNotes ? 'Only you can see this. Handy for notes and files you want to keep.' : channel.topic || undefined}
           right={
             <>
               <button
@@ -82,10 +83,10 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
               >
                 <Search size={18} />
               </button>
-              <StartCallButton channelId={channelId} />
+              {!isNotes && <StartCallButton channelId={channelId} />}
               <ListenButton channelId={channelId} />
-              <MuteButton channelId={channelId} />
-              {isDM && (
+              {!isNotes && <MuteButton channelId={channelId} />}
+              {isDM && !isNotes && (
                 <button
                   className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
                   title="Add people to this chat"
@@ -122,7 +123,7 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
         <Composer channelId={channelId} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
       </div>
       {!isDM && groupId && <MemberPanel groupId={groupId} open={membersOpen} onClose={() => setMembersOpen(false)} />}
-      {isDM && <AddPeopleModal open={addOpen} onClose={() => setAddOpen(false)} channelId={channelId} />}
+      {isDM && !isNotes && <AddPeopleModal open={addOpen} onClose={() => setAddOpen(false)} channelId={channelId} />}
       {isGroupChat && (
         <ChatSettingsModal open={chatSettingsOpen} onClose={() => setChatSettingsOpen(false)} channelId={channelId} />
       )}

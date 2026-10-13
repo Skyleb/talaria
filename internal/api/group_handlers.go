@@ -384,18 +384,17 @@ func (s *Server) handleOpenDM(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.UserID == me.ID {
-		badRequest(w, "cannot DM yourself")
-		return
-	}
-	friends, err := s.Store.AreFriends(r.Context(), me.ID, req.UserID)
-	if err != nil {
-		serverError(w, s.Log, err)
-		return
-	}
-	if !friends {
-		forbidden(w, "DMs require friendship")
-		return
+	// Messaging yourself opens a private notes chat; no friendship needed.
+	if req.UserID != me.ID {
+		friends, err := s.Store.AreFriends(r.Context(), me.ID, req.UserID)
+		if err != nil {
+			serverError(w, s.Log, err)
+			return
+		}
+		if !friends {
+			forbidden(w, "DMs require friendship")
+			return
+		}
 	}
 	ch, created, err := s.Store.GetOrCreateDM(r.Context(), me.ID, req.UserID)
 	if err != nil {
@@ -407,8 +406,11 @@ func (s *Server) handleOpenDM(w http.ResponseWriter, r *http.Request) {
 		ch.Participants = append(ch.Participants, u)
 	}
 	if created {
-		s.Hub.PublishToUsers([]string{me.ID, req.UserID}, gateway.EvtDMCreate,
-			map[string]any{"channel": ch})
+		recipients := []string{me.ID}
+		if req.UserID != me.ID {
+			recipients = append(recipients, req.UserID)
+		}
+		s.Hub.PublishToUsers(recipients, gateway.EvtDMCreate, map[string]any{"channel": ch})
 	}
 	writeJSON(w, 200, map[string]any{"channel": ch})
 }

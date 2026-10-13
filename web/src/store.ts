@@ -373,8 +373,15 @@ export function displayName(users: Record<string, User>, id: string): string {
   return users[id]?.display_name || users[id]?.username || 'Unknown'
 }
 
+// isNotesChat: the private chat a user has with themselves (one participant).
+export function isNotesChat(ch: Channel, meId: string): boolean {
+  const ps = ch.participants ?? []
+  return ch.kind === 'dm' && !ch.name && ps.length === 1 && ps[0].id === meId
+}
+
 export function dmTitle(ch: Channel, meId: string, users: Record<string, User>): string {
   if (ch.name) return ch.name
+  if (isNotesChat(ch, meId)) return 'Notes to self'
   const others = (ch.participants ?? []).filter((p) => p.id !== meId)
   if (others.length) return others.map((p) => p.display_name || p.username).join(', ')
   return 'Direct message'

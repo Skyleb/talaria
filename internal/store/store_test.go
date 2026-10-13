@@ -149,3 +149,31 @@ func TestOrphanAttachmentGC(t *testing.T) {
 		t.Fatalf("attachment should be gone, got %v", err)
 	}
 }
+
+func TestSelfDMHasOneParticipant(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	u, err := s.CreateUser(ctx, "solo", "Solo", "x", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, created, err := s.GetOrCreateDM(ctx, u.ID, u.ID)
+	if err != nil || !created {
+		t.Fatalf("create self DM: created=%v err=%v", created, err)
+	}
+	ids, err := s.DMParticipantIDs(ctx, ch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != u.ID {
+		t.Fatalf("participants = %v, want just the user", ids)
+	}
+	again, created, err := s.GetOrCreateDM(ctx, u.ID, u.ID)
+	if err != nil || created || again.ID != ch.ID {
+		t.Fatalf("second open: id=%s created=%v err=%v", again.ID, created, err)
+	}
+	pair, err := s.IsPairDM(ctx, ch.ID)
+	if err != nil || !pair {
+		t.Fatalf("self DM should count as a pair DM (not leaveable): pair=%v err=%v", pair, err)
+	}
+}

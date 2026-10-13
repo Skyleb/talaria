@@ -98,7 +98,11 @@ func (s *Store) GetOrCreateDM(ctx context.Context, a, b string) (*model.Channel,
 		VALUES (?, ?, '', 0, ?, ?)`, c.ID, c.Kind, key, c.CreatedAt); err != nil {
 		return nil, false, err
 	}
-	for _, uid := range []string{a, b} {
+	members := []string{a, b}
+	if a == b {
+		members = members[:1] // a private notes chat has one participant
+	}
+	for _, uid := range members {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO dm_participants (channel_id, user_id)
 			VALUES (?, ?)`, c.ID, uid); err != nil {
 			return nil, false, err

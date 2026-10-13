@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { BellOff, Hash, Menu, Moon, Phone, PhoneOff, Plus, Search, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
+import { BellOff, Hash, Menu, Moon, NotebookPen, Phone, PhoneOff, Plus, Search, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
 import { setAppBadge, syncPush } from '../lib/notifications'
-import { dmOther, dmTitle, displayName, useApp } from '../store'
+import { dmOther, dmTitle, displayName, isNotesChat, useApp } from '../store'
 import { useCall } from '../call'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
@@ -17,7 +17,7 @@ import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
 import FriendsPage from './FriendsPage'
 import ChatPage from './ChatPage'
 import SettingsPage from './SettingsPage'
-import type { Group } from '../lib/types'
+import type { Channel, Group } from '../lib/types'
 
 export default function AppShell() {
   const ready = useApp((s) => s.ready)
@@ -68,7 +68,7 @@ export default function AppShell() {
       {/* Left drawer (mobile) / fixed columns (md+) */}
       <div
         className={cx(
-          'fixed inset-y-0 left-0 z-40 flex transition-transform md:static md:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex transition-transform md:static md:z-auto md:translate-x-0',
           leftOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -621,12 +621,13 @@ function DMList() {
         >
           <Users size={18} /> Friends
         </button>
+        <NotesButton channelId={channelId} />
         <div className="px-2 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-2">
           Messages
         </div>
         {sorted.map((cid) => {
           const c = channels[cid]
-          if (!c || !me) return null
+          if (!c || !me || isNotesChat(c, me.id)) return null
           const isGroupChat = (c.participants?.length ?? 0) > 2 || !!c.name
           const other = dmOther(c, me.id)
           const otherUser = other ? users[other.id] ?? other : undefined
@@ -663,6 +664,45 @@ function DMList() {
         )}
       </div>
     </>
+  )
+}
+
+// NotesButton opens the user's private chat with themselves (notes, files to
+// keep), creating it the first time it is used.
+function NotesButton({ channelId }: { channelId?: string }) {
+  const me = useApp((s) => s.me)
+  const channels = useApp((s) => s.channels)
+  const dmChannelIds = useApp((s) => s.dmChannelIds)
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  if (!me) return null
+  const existing = dmChannelIds.find((id) => channels[id] && isNotesChat(channels[id], me.id))
+  const active = !!existing && existing === channelId
+  async function open() {
+    if (existing) {
+      navigate(`/app/dm/${existing}`)
+      return
+    }
+    if (busy) return
+    setBusy(true)
+    try {
+      const res = await api.post<{ channel: Channel }>('/api/v1/dms', { user_id: me!.id })
+      navigate(`/app/dm/${res.channel.id}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button
+      onClick={open}
+      title="A private chat only you can see. Keep notes and files here."
+      className={cx(
+        'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm',
+        active ? 'bg-bg-3 text-ink' : 'text-ink-1 hover:bg-bg-3 hover:text-ink',
+      )}
+    >
+      <NotebookPen size={18} /> Notes to self
+    </button>
   )
 }
 

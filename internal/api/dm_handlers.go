@@ -100,6 +100,10 @@ func (s *Server) handleAddDMParticipant(w http.ResponseWriter, r *http.Request) 
 		serverError(w, s.Log, err)
 		return
 	}
+	if len(ids) == 1 && ids[0] == me.ID {
+		badRequest(w, "your notes chat is just for you")
+		return
+	}
 	if slices.Contains(ids, target.ID) {
 		conflict(w, "they're already in this chat")
 		return
