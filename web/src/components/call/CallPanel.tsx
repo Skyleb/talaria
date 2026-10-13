@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown, Ear, EarOff, Expand, Grid2x2, Headphones, ListMusic, Maximize2, Mic, MicOff, Monitor, MonitorOff,
-  Phone, PhoneOff, Video, VideoOff, Volume2, VolumeX,
+  Phone, PhoneOff, SlidersHorizontal, Video, VideoOff, Volume2, VolumeX,
 } from 'lucide-react'
 import { useCall, type RemoteFeed } from '../../call'
 import { useListen } from '../../listen'
 import { mixer } from '../../audio/mixer'
+import { usePrefs, type AVPrefs } from '../../prefs'
+import { MIC_TIERS } from '../../media/encodings'
 import { displayName, dmTitle, useApp } from '../../store'
 import { Avatar } from '../Avatar'
-import { Button, cx } from '../ui'
+import { Button, cx, Select } from '../ui'
 import { ListenStage } from './ListenStage'
 import { QueuePanel } from './QueuePanel'
 import { StartListenModal } from '../listen/queue'
@@ -523,6 +525,7 @@ function Controls({ onListen, listening, queueOpen }: { onListen: () => void; li
       <CtlBtn title={listening ? (queueOpen ? 'Hide the queue' : 'Show the queue') : 'Listen together'} active={listening && queueOpen} onClick={onListen}>
         {listening ? <ListMusic size={18} /> : <Headphones size={18} />}
       </CtlBtn>
+      <QualityButton />
       <button
         title="Leave call"
         onClick={leave}
@@ -530,6 +533,51 @@ function Controls({ onListen, listening, queueOpen }: { onListen: () => void; li
       >
         <PhoneOff size={18} />
       </button>
+    </div>
+  )
+}
+
+// QualityButton: in-call access to the microphone tier and (Phase 4) the
+// camera / screen presets. The same preferences live in Settings.
+function QualityButton() {
+  const [open, setOpen] = useState(false)
+  const prefs = usePrefs()
+  const set = usePrefs((s) => s.set)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+  return (
+    <div className="relative">
+      <CtlBtn title="Quality settings" active={open} onClick={() => setOpen((v) => !v)}>
+        <SlidersHorizontal size={18} />
+      </CtlBtn>
+      {open && (
+        <div className="absolute bottom-12 left-1/2 z-10 w-64 -translate-x-1/2 rounded-xl border border-edge bg-bg-1 p-3 text-left text-sm text-ink shadow-xl">
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-1">Microphone</label>
+          <Select value={prefs.micTier} onChange={(e) => set({ micTier: e.target.value as AVPrefs['micTier'] })}>
+            {(Object.keys(MIC_TIERS) as AVPrefs['micTier'][]).map((t) => (
+              <option key={t} value={t}>
+                {MIC_TIERS[t].label}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1 text-xs text-ink-2">{MIC_TIERS[prefs.micTier].hint}</p>
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-ink">
+            <input type="checkbox" className="accent-[var(--color-accent)]" checked={prefs.voiceIsolation} onChange={(e) => set({ voiceIsolation: e.target.checked })} />
+            Voice isolation (kills room squeal)
+          </label>
+          <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-ink">
+            <input type="checkbox" className="accent-[var(--color-accent)]" checked={prefs.ducking.enabled} onChange={(e) => set({ ducking: { enabled: e.target.checked } as AVPrefs['ducking'] })} />
+            Duck music while people talk
+          </label>
+          <button onClick={() => setOpen(false)} className="mt-3 w-full rounded-lg bg-bg-2 py-1.5 text-xs text-ink-1 hover:bg-bg-3 hover:text-ink">
+            Done
+          </button>
+        </div>
+      )}
     </div>
   )
 }

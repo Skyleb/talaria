@@ -4,6 +4,7 @@ import { AvatarCropper } from '../components/AvatarCropper'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
 import { usePrefs, type AVPrefs } from '../prefs'
+import { MIC_TIERS } from '../media/encodings'
 import { PALETTES } from '../lib/palettes'
 import {
   canInstall, disablePush, enablePush, isStandalone, onInstallChange, promptInstall, pushState,
@@ -496,6 +497,17 @@ function VoiceVideoSection() {
       <div className="space-y-5">
         <div className="space-y-3">
           <SubHead>Your microphone</SubHead>
+          <div>
+            <Label>Quality</Label>
+            <Select value={prefs.micTier} onChange={(e) => set({ micTier: e.target.value as AVPrefs['micTier'] })}>
+              {(Object.keys(MIC_TIERS) as AVPrefs['micTier'][]).map((t) => (
+                <option key={t} value={t}>
+                  {MIC_TIERS[t].label}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-ink-2">{MIC_TIERS[prefs.micTier].hint} Changes apply even mid-call.</p>
+          </div>
           <Toggle
             checked={prefs.highPass}
             onChange={(v) => set({ highPass: v })}

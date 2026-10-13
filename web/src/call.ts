@@ -6,8 +6,9 @@
 import { create } from 'zustand'
 import { sendCommand } from './gateway'
 import { mixer } from './audio/mixer'
-import { createMicChain, voiceConstraints, type MicChain } from './audio/mic'
-import { usePrefs } from './prefs'
+import { createMicChain, type MicChain } from './audio/mic'
+import { usePrefs, type MicTier } from './prefs'
+import { MIC_TIERS, micConstraints, mungeOpusFmtp } from './media/encodings'
 
 export interface CallParticipant {
   user_id: string
@@ -78,6 +79,64 @@ function setMicEnabled(on: boolean) {
   rawMic?.getAudioTracks().forEach((t) => (t.enabled = on))
   micStream?.getAudioTracks().forEach((t) => (t.enabled = on))
   mixer.setLocalMuted(!on)
+}
+
+let micTierInUse: MicTier = 'voice'
+
+function buildMicChain(raw: MediaStream, tier: MicTier): MicChain | null {
+  if (tier === 'music') return null
+  try {
+    const p = usePrefs.getState()
+    return createMicChain(mixer.context(), raw, { highPass: p.highPass, voiceIsolation: p.voiceIsolation })
+  } catch {
+    return null
+  }
+}
+
+function micSender(): RTCRtpSender | undefined {
+  return pubPC?.getSenders().find((s) => s.track?.kind === 'audio')
+}
+
+// applyMicParams caps the sender's bitrate to the tier (the fmtp rewrite in
+// the answer handles stereo and the encoder's own target).
+function applyMicParams() {
+  const sender = micSender()
+  if (!sender) return
+  const params = sender.getParameters()
+  if (!params.encodings?.length) return
+  const spec = MIC_TIERS[micTierInUse]
+  params.encodings = params.encodings.map((e) => ({ ...e, maxBitrate: spec.maxBitrate }))
+  sender.setParameters(params).catch(() => {})
+}
+
+// switchMicTier recaptures the microphone with the new tier's constraints
+// mid-call, swaps the track without renegotiating, then re-offers so the
+// answer's Opus parameters change too.
+async function switchMicTier(tier: MicTier) {
+  if (!rawMic || !pubPC || tier === micTierInUse) return
+  const sender = micSender()
+  if (!sender) return
+  const wasEnabled = rawMic.getAudioTracks()[0]?.enabled ?? true
+  let fresh: MediaStream
+  try {
+    fresh = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(tier) })
+  } catch {
+    return
+  }
+  micChain?.close()
+  rawMic.getTracks().forEach((t) => t.stop())
+  rawMic = fresh
+  micTierInUse = tier
+  micChain = buildMicChain(rawMic, tier)
+  micStream = micChain ? micChain.stream : rawMic
+  const track = micStream.getAudioTracks()[0]
+  if (track) {
+    await sender.replaceTrack(track).catch(() => {})
+    setMicEnabled(wasEnabled)
+    mixer.attachLocal(micStream)
+    applyMicParams()
+  }
+  sendPubOffer()
 }
 
 function cleanupConnections() {
@@ -169,11 +228,15 @@ export function handleCallEvent(t: string, d: any) {
       break
     case 'rtc.answer': // answer to our pub offer
       if (pubPC && d.sdp) {
+        // The encoder reads Opus parameters (stereo, bitrate) from the remote
+        // description, so the tier is applied by rewriting the answer.
+        const answer: RTCSessionDescriptionInit = { type: d.sdp.type, sdp: mungeOpusFmtp(d.sdp.sdp ?? '', usePrefs.getState().micTier) }
         pubPC
-          .setRemoteDescription(d.sdp)
+          .setRemoteDescription(answer)
           .then(async () => {
             for (const c of pubPendingICE) await pubPC?.addIceCandidate(c).catch(() => {})
             pubPendingICE = []
+            applyMicParams()
             if (pubDirty) {
               pubDirty = false
               sendPubOffer()
@@ -296,21 +359,20 @@ export const useCall = create<CallState>((set, get) => ({
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Microphone needs HTTPS (or localhost). You are connected listen-only.')
       }
-      micStream = rawMic = await navigator.mediaDevices.getUserMedia({ audio: voiceConstraints() })
-      // Outgoing chain: high-pass + optional voice isolation. If Web Audio
-      // is unavailable the raw device track is sent as-is.
-      try {
-        micChain = createMicChain(mixer.context(), rawMic, { highPass: prefs.highPass, voiceIsolation: prefs.voiceIsolation })
-        micStream = micChain.stream
-      } catch {
-        micChain = null
-      }
+      micStream = rawMic = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(prefs.micTier) })
+      micTierInUse = prefs.micTier
+      // Outgoing chain: high-pass + optional voice isolation (voice tiers
+      // only; the music tier sends the untouched stereo capture). If Web
+      // Audio is unavailable the raw device track is sent as-is.
+      micChain = buildMicChain(rawMic, prefs.micTier)
+      if (micChain) micStream = micChain.stream
       const pc = ensurePubPC()
       watchConnection(pc)
       for (const track of micStream.getTracks()) {
         streamMeta[micStream.id] = 'mic'
         pc.addTrack(track, micStream)
       }
+      applyMicParams()
       mixer.attachLocal(micStream)
     } catch (err: any) {
       set({ mediaError: err?.message ?? 'Microphone unavailable — connected listen-only.', muted: true })
@@ -439,4 +501,5 @@ usePrefs.subscribe((p) => {
   mixer.setLeveler(p.leveler)
   mixer.setDucking(p.ducking)
   micChain?.update({ highPass: p.highPass, voiceIsolation: p.voiceIsolation })
+  if (useCall.getState().joinedChannelId && p.micTier !== micTierInUse) switchMicTier(p.micTier)
 })
