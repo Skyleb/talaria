@@ -140,6 +140,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 			s.announceMemberAdd(r, consumed.GroupID, u.ID)
 		}
 	}
+	// Whoever sent the invite (to the app or to a group) is the newcomer's
+	// first friend.
+	s.befriendInviter(r, consumed.CreatedBy, u.ID)
 	if err := s.Auth.Issue(r.Context(), w, r, u.ID); err != nil {
 		serverError(w, s.Log, err)
 		return
