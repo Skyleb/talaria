@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/skyle/talaria/internal/auth"
 	"github.com/skyle/talaria/internal/listen"
@@ -253,6 +254,25 @@ func (s *Server) handleListenSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 201, map[string]any{"playlist": p})
+}
+
+// handleListenSearch finds YouTube videos for the add-to-queue dialog.
+func (s *Server) handleListenSearch(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		writeJSON(w, 200, map[string]any{"results": []any{}})
+		return
+	}
+	if len(q) > 200 {
+		q = q[:200]
+	}
+	results, err := listen.SearchYouTube(r.Context(), q, s.Config.YouTube.APIKey)
+	if err != nil {
+		s.Log.Warn("youtube search", "err", err)
+		writeErr(w, 502, "search", "YouTube search is unavailable right now. You can still paste a link.")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"results": results})
 }
 
 func (s *Server) handleListPlaylists(w http.ResponseWriter, r *http.Request) {

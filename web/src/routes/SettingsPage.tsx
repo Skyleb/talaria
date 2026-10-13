@@ -692,6 +692,22 @@ function ServerConfigSection() {
         </div>
 
         <div className="space-y-3">
+          <SubHead>Listen together</SubHead>
+          <div>
+            <Label>YouTube API key (optional)</Label>
+            <Input
+              value={cfg.youtube.api_key}
+              onChange={(e) => patch('youtube', { api_key: e.target.value })}
+              placeholder="Search works without one"
+            />
+            <p className="mt-1 text-xs text-ink-2">
+              Search reads YouTube's public results page by default. A free Data API key from Google Cloud
+              switches to the official API if that ever stops working.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
           <SubHead>Calls (WebRTC)</SubHead>
           <div className="grid grid-cols-2 gap-3">
             <div>

@@ -15,6 +15,7 @@ type Config struct {
 	DDNS      DDNSConfig      `toml:"ddns"`
 	LanAccess LanAccessConfig `toml:"lan_access"`
 	LanDNS    LanDNSConfig    `toml:"lan_dns"`
+	YouTube   YouTubeConfig   `toml:"youtube"`
 	WebRTC    WebRTCConfig    `toml:"webrtc"`
 	Net       NetConfig       `toml:"net"`
 
@@ -80,6 +81,12 @@ type LanDNSConfig struct {
 	Upstream string `toml:"upstream"`  // comma-separated resolvers
 	AnswerIP string `toml:"answer_ip"` // default: auto-detect LAN IP
 	TTL      int    `toml:"ttl_seconds"`
+}
+
+// YouTubeConfig: search works without a key by reading YouTube's results
+// page; an API key switches to the official Data API (sturdier, quota-bound).
+type YouTubeConfig struct {
+	APIKey string `toml:"api_key"`
 }
 
 // WebRTCConfig is written now so Phase 2 (voice/video SFU) is purely additive.

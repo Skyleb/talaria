@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown, ChevronUp, Crown, Headphones, Link as LinkIcon, ListMusic, LogOut, Pause, Play,
-  Plus, Save, SkipBack, SkipForward, Trash2, Upload, Volume2, VolumeX, X,
+  Plus, Save, Search, SkipBack, SkipForward, Trash2, Upload, Volume2, VolumeX, X, Check,
 } from 'lucide-react'
-import { uploadFile } from '../../lib/api'
+import { api, uploadFile } from '../../lib/api'
 import { displayName, useApp } from '../../store'
 import { formatClock, positionMs, useListen } from '../../listen'
 import { Avatar } from '../Avatar'
-import { Button, cx, ErrorText, Input, Modal } from '../ui'
+import { Button, cx, ErrorText, Input, Modal, Spinner } from '../ui'
 import { MediaPlayer, YouTubePlayer } from './players'
-import type { PlaylistItem } from '../../lib/types'
+import type { PlaylistItem, YouTubeSearchResult } from '../../lib/types'
 
 // ListenPanel sits under the channel header. It renders nothing when no one
 // is listening, a join banner when a session is running without you, and
@@ -386,87 +386,169 @@ function QueueRow({
 function AddModal({ open, onClose, channelId }: { open: boolean; onClose: () => void; channelId: string }) {
   const addUrl = useListen((s) => s.addUrl)
   const addUpload = useListen((s) => s.addUpload)
-  const [url, setUrl] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<YouTubeSearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [added, setAdded] = useState<Record<string, boolean>>({})
+  const [busyId, setBusyId] = useState<string | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // A pasted link (or bare video id) is added directly; anything else searches.
+  const trimmed = query.trim()
+  const isLink = /^(https?:\/\/|www\.|m\.|youtu\.be|music\.youtube|youtube\.com)/i.test(trimmed) || /^[A-Za-z0-9_-]{11}$/.test(trimmed)
+
   useEffect(() => {
     if (open) {
-      setUrl('')
+      setQuery('')
+      setResults([])
+      setAdded({})
       setError('')
       setProgress(null)
     }
   }, [open])
 
-  async function submitUrl(e: React.FormEvent) {
-    e.preventDefault()
-    if (!url.trim()) return
-    setBusy(true)
+  useEffect(() => {
+    if (!trimmed || isLink) {
+      setResults([])
+      return
+    }
+    const t = setTimeout(async () => {
+      setSearching(true)
+      setError('')
+      try {
+        const r = await api.get<{ results: YouTubeSearchResult[] }>(`/api/v1/listen/search?q=${encodeURIComponent(trimmed)}`)
+        setResults(r.results ?? [])
+      } catch (e: any) {
+        setError(e?.message ?? 'Search failed')
+        setResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 350)
+    return () => clearTimeout(t)
+  }, [trimmed, isLink])
+
+  async function add(idOrUrl: string) {
+    setBusyId(idOrUrl)
     setError('')
     try {
-      await addUrl(channelId, url.trim())
-      setUrl('')
-      onClose()
-    } catch (e2: any) {
-      setError(e2?.message ?? 'Could not add that link')
+      await addUrl(channelId, idOrUrl)
+      setAdded((a) => ({ ...a, [idOrUrl]: true }))
+      if (isLink) setQuery('')
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not add that')
     } finally {
-      setBusy(false)
+      setBusyId(null)
     }
   }
 
   async function upload(file: File) {
-    setBusy(true)
+    setBusyId('upload')
     setError('')
     setProgress(0)
     try {
       const res = await uploadFile(file, setProgress)
       await addUpload(channelId, res.attachment.id)
       onClose()
-    } catch (e2: any) {
-      setError(e2?.message ?? 'Upload failed')
+    } catch (e: any) {
+      setError(e?.message ?? 'Upload failed')
     } finally {
-      setBusy(false)
+      setBusyId(null)
       setProgress(null)
     }
   }
 
   return (
     <Modal open={open} onClose={onClose} title="Add to the queue">
-      <form className="space-y-2" onSubmit={submitUrl}>
-        <div className="flex gap-2">
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (isLink && trimmed) add(trimmed)
+        }}
+      >
+        <div className="relative flex-1">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-2" />
           <Input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste a YouTube link"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search YouTube or paste a link"
+            className="pl-9"
             autoFocus
           />
-          <Button type="submit" disabled={busy || !url.trim()}>
+        </div>
+        {isLink && (
+          <Button type="submit" disabled={busyId !== null || !trimmed}>
             <LinkIcon size={15} /> Add
           </Button>
-        </div>
-        <p className="text-xs text-ink-2">YouTube and YouTube Music links work today. Spotify and Apple Music are coming.</p>
+        )}
       </form>
-      <div className="my-4 flex items-center gap-3 text-xs text-ink-2">
-        <span className="h-px flex-1 bg-edge" /> or <span className="h-px flex-1 bg-edge" />
+
+      <div className="mt-3 max-h-80 space-y-1 overflow-y-auto">
+        {searching && results.length === 0 && (
+          <p className="py-6 text-center text-sm text-ink-2">Searching…</p>
+        )}
+        {!searching && trimmed && !isLink && results.length === 0 && !error && (
+          <p className="py-6 text-center text-sm text-ink-2">No videos found.</p>
+        )}
+        {results.map((r) => {
+          const done = !!added[r.id]
+          return (
+            <button
+              key={r.id}
+              disabled={done || busyId !== null}
+              onClick={() => add(r.id)}
+              className={cx(
+                'flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left',
+                done ? 'opacity-60' : 'hover:bg-bg-3/60',
+              )}
+            >
+              <img src={r.thumbnail} alt="" className="h-12 w-[84px] shrink-0 rounded-lg object-cover" loading="lazy" />
+              <div className="min-w-0 flex-1">
+                <div className="line-clamp-2 text-sm font-medium leading-snug text-ink">{r.title}</div>
+                <div className="truncate text-xs text-ink-2">
+                  {r.channel}
+                  {r.duration_ms ? ` · ${formatClock(r.duration_ms)}` : ''}
+                </div>
+              </div>
+              <span className="shrink-0 text-ink-2">
+                {done ? <Check size={16} className="text-success" /> : busyId === r.id ? <Spinner className="h-4 w-4" /> : <Plus size={16} />}
+              </span>
+            </button>
+          )
+        })}
       </div>
-      <Button variant="ghost" className="w-full border border-edge" disabled={busy} onClick={() => fileRef.current?.click()}>
-        <Upload size={15} /> {progress !== null ? `Uploading… ${Math.round(progress * 100)}%` : 'Upload a song or video'}
-      </Button>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="audio/*,video/*"
-        hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0]
-          if (f) upload(f)
-          e.target.value = ''
-        }}
-      />
-      <div className="mt-2">
+
+      {!trimmed && (
+        <>
+          <div className="my-4 flex items-center gap-3 text-xs text-ink-2">
+            <span className="h-px flex-1 bg-edge" /> or <span className="h-px flex-1 bg-edge" />
+          </div>
+          <Button variant="ghost" className="w-full border border-edge" disabled={busyId !== null} onClick={() => fileRef.current?.click()}>
+            <Upload size={15} /> {progress !== null ? `Uploading… ${Math.round(progress * 100)}%` : 'Upload a song or video'}
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="audio/*,video/*"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) upload(f)
+              e.target.value = ''
+            }}
+          />
+        </>
+      )}
+      <div className="mt-2 flex items-center justify-between gap-2">
         <ErrorText>{error}</ErrorText>
+        {Object.keys(added).length > 0 && (
+          <Button variant="ghost" className="ml-auto px-3 py-1.5 text-sm" onClick={onClose}>
+            Done
+          </Button>
+        )}
       </div>
     </Modal>
   )

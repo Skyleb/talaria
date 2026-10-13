@@ -38,6 +38,9 @@ type configPayload struct {
 		Enabled bool   `json:"enabled"`
 		Domain  string `json:"domain"`
 	} `json:"lan_access"`
+	YouTube struct {
+		APIKey string `json:"api_key"`
+	} `json:"youtube"`
 	WebRTC struct {
 		UDPPort  int    `json:"udp_port"`
 		PublicIP string `json:"public_ip"`
@@ -63,6 +66,7 @@ func (s *Server) configSnapshot() configPayload {
 	p.DDNS.IntervalMinutes = c.DDNS.IntervalMinutes
 	p.LanAccess.Enabled = c.LanAccess.Enabled
 	p.LanAccess.Domain = c.LanAccess.Domain
+	p.YouTube.APIKey = c.YouTube.APIKey
 	p.WebRTC.UDPPort = c.WebRTC.UDPPort
 	p.WebRTC.PublicIP = c.WebRTC.PublicIP
 	return p
@@ -195,6 +199,7 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	c.DDNS.IntervalMinutes = p.DDNS.IntervalMinutes
 	c.LanAccess.Enabled = p.LanAccess.Enabled
 	c.LanAccess.Domain = strings.TrimSpace(p.LanAccess.Domain)
+	c.YouTube.APIKey = strings.TrimSpace(p.YouTube.APIKey)
 	lanToken := c.LanAccess.Token
 	if lanToken == "" {
 		lanToken = c.DDNS.Token

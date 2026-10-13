@@ -85,8 +85,10 @@ localhost.
 ## Listen together
 
 Any chat, DM, or group channel can host a shared listening session: tap the
-headphones icon in the header, paste YouTube links or upload songs and
-videos, and everyone who joins hears the same moment. The server keeps the
+headphones icon in the header, search YouTube right in the app (or paste a
+link), upload songs and videos, and everyone who joins hears the same moment.
+Search needs no API key; an optional YouTube Data API key can be set in the
+admin settings if you prefer the official API. The server keeps the
 clock, so late joiners land in sync; the host drives play/pause/seek/skip
 and anyone can add to the queue. Save a queue as a named playlist to start
 it again later. A member's profile card shows what they are listening to,

@@ -161,6 +161,14 @@ export interface Playlist {
   item_count: number
 }
 
+export interface YouTubeSearchResult {
+  id: string
+  title: string
+  channel: string
+  duration_ms?: number
+  thumbnail: string
+}
+
 export interface ListenState {
   channel_id: string
   session: PlaybackSession | null
@@ -203,6 +211,9 @@ export interface ServerConfig {
   lan_access: {
     enabled: boolean
     domain: string
+  }
+  youtube: {
+    api_key: string
   }
   webrtc: {
     udp_port: number
