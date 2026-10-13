@@ -66,7 +66,10 @@ func (p *Porkbun) PublicIPv4(ctx context.Context) (string, error) {
 }
 
 // SetRecord makes host's records of the given type consist of exactly one
-// record with content. It is a no-op when the record already matches.
+// record with content. It is a no-op when the record already matches. For
+// address records it also removes ALIAS/CNAME records at the same name,
+// which is what a registrar's parking page leaves behind and which would
+// otherwise make the create call fail.
 func (p *Porkbun) SetRecord(ctx context.Context, host, typ, content string) error {
 	zone, sub, err := SplitZone(host)
 	if err != nil {
@@ -78,6 +81,13 @@ func (p *Porkbun) SetRecord(ctx context.Context, host, typ, content string) erro
 	}
 	if len(existing) == 1 && existing[0].Content == content {
 		return nil
+	}
+	if typ == "A" || typ == "AAAA" {
+		for _, conflict := range []string{"ALIAS", "CNAME"} {
+			if err := p.DeleteRecord(ctx, host, conflict); err != nil {
+				return fmt.Errorf("remove %s record in the way of %s: %w", conflict, typ, err)
+			}
+		}
 	}
 	if len(existing) == 1 {
 		_, err = p.post(ctx, p.url("dns/editByNameType", zone, typ, sub), map[string]string{

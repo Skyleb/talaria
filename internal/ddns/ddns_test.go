@@ -37,6 +37,9 @@ type fakePorkbun struct {
 	t       *testing.T
 	records map[string][]string
 	calls   []string
+	// conflicts makes create fail when an ALIAS/CNAME exists at the name,
+	// as the real API does.
+	conflicts bool
 }
 
 func (f *fakePorkbun) handler(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +86,13 @@ func (f *fakePorkbun) handler(w http.ResponseWriter, r *http.Request) {
 			f.records[k][i] = body["content"]
 		}
 	case parts[1] == "create":
-		k := key(body["type"], name(parts[2], body["name"]))
+		host := name(parts[2], body["name"])
+		if f.conflicts && (body["type"] == "A" || body["type"] == "AAAA") &&
+			(len(f.records[key("ALIAS", host)]) > 0 || len(f.records[key("CNAME", host)]) > 0) {
+			http.Error(w, `{"status":"ERROR","message":"A record conflicts with an existing ALIAS/CNAME."}`, 400)
+			return
+		}
+		k := key(body["type"], host)
 		f.records[k] = append(f.records[k], body["content"])
 	case parts[1] == "deleteByNameType":
 		delete(f.records, key(parts[3], name(parts[2], subOf())))
@@ -145,6 +154,31 @@ func TestPorkbunReplacesParkingRecords(t *testing.T) {
 	}
 	if got := f.records["A talaria.gg"]; len(got) != 1 || got[0] != "203.0.113.7" {
 		t.Fatalf("apex A = %q, want exactly one record with the detected IP", got)
+	}
+}
+
+func TestPorkbunReplacesParkingAlias(t *testing.T) {
+	f, p := newFake(t)
+	// Porkbun's actual parking setup: an ALIAS at the apex and a wildcard
+	// CNAME, no A records at all. Creating an A next to the ALIAS fails.
+	f.records["ALIAS talaria.gg"] = []string{"pixie.porkbun.com"}
+	f.records["CNAME *.talaria.gg"] = []string{"pixie.porkbun.com"}
+	f.conflicts = true
+	if err := updatePorkbun(context.Background(), p, Config{Domain: "talaria.gg"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.records["A talaria.gg"]; len(got) != 1 || got[0] != "203.0.113.7" {
+		t.Fatalf("apex A = %q", got)
+	}
+	if _, ok := f.records["ALIAS talaria.gg"]; ok {
+		t.Fatal("parking ALIAS should be gone")
+	}
+	if _, ok := f.records["CNAME *.talaria.gg"]; !ok {
+		t.Fatal("the wildcard CNAME is a different name and must be left alone")
+	}
+	// A subdomain record is unaffected by the wildcard conflict rule.
+	if err := updatePorkbun(context.Background(), p, Config{Domain: "lan.talaria.gg", IP: "192.168.1.20"}); err != nil {
+		t.Fatal(err)
 	}
 }
 
