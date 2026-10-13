@@ -6,8 +6,10 @@ package push
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +61,10 @@ func New(ctx context.Context, st *store.Store, log *slog.Logger, contact string)
 	if contact == "" {
 		contact = "https://github.com/skyleb/talaria"
 	}
+	// webpush-go adds "mailto:" itself to anything that isn't an https URL.
+	// Passing it pre-prefixed yields "mailto:mailto:…", which Apple's push
+	// service rejects with 403 BadJwtToken (Google's tolerates it).
+	contact = strings.TrimPrefix(contact, "mailto:")
 	return &Sender{st: st, log: log, public: pub, private: priv, contact: contact}, nil
 }
 
@@ -120,7 +126,9 @@ func (s *Sender) sendOne(ctx context.Context, sub *model.PushSubscription, paylo
 		s.st.DeletePushEndpoint(context.Background(), sub.Endpoint)
 	default:
 		if resp.StatusCode >= 400 {
-			s.log.Warn("push rejected", "status", resp.StatusCode, "endpoint", sub.Endpoint[:min(40, len(sub.Endpoint))])
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			s.log.Warn("push rejected", "status", resp.StatusCode, "body", strings.TrimSpace(string(body)),
+				"endpoint", sub.Endpoint[:min(40, len(sub.Endpoint))])
 		}
 	}
 }
