@@ -11,20 +11,15 @@ interface ListenStore {
   // Local playback preferences (never synced).
   volume: number
   muted: boolean
-  // audioOnly shrinks the video to save bandwidth; theater enlarges it.
+  // audioOnly shrinks the video to save bandwidth.
   audioOnly: boolean
-  theater: boolean
-  // slot is where the in-channel panel wants the floating player drawn.
-  slot: { channelId: string; rect: { left: number; top: number; width: number; height: number } } | null
-  // fsNonce increments to ask the floating player to go fullscreen.
-  fsNonce: number
+  // queueOpen shows the queue drawer inside the call view.
+  queueOpen: boolean
 
   setVolume: (v: number) => void
   setMuted: (m: boolean) => void
   setAudioOnly: (v: boolean) => void
-  setTheater: (v: boolean) => void
-  setSlot: (slot: ListenStore['slot']) => void
-  requestFullscreen: () => void
+  setQueueOpen: (v: boolean) => void
 
   start: (channelId: string, playlistId?: string) => Promise<void>
   join: (channelId: string) => Promise<void>
@@ -73,9 +68,7 @@ export const useListen = create<ListenStore>((set) => ({
   volume: Number(localStorage.getItem('talaria-volume') ?? '0.8'),
   muted: false,
   audioOnly: localStorage.getItem('talaria-audio-only') === '1',
-  theater: false,
-  slot: null,
-  fsNonce: 0,
+  queueOpen: false,
 
   setVolume: (v) => {
     localStorage.setItem('talaria-volume', String(v))
@@ -86,15 +79,7 @@ export const useListen = create<ListenStore>((set) => ({
     localStorage.setItem('talaria-audio-only', v ? '1' : '0')
     set({ audioOnly: v })
   },
-  setTheater: (v) => set({ theater: v }),
-  setSlot: (slot) =>
-    set((s) => {
-      const a = s.slot, b = slot
-      if (a === b) return {}
-      if (a && b && a.channelId === b.channelId && a.rect.left === b.rect.left && a.rect.top === b.rect.top && a.rect.width === b.rect.width && a.rect.height === b.rect.height) return {}
-      return { slot }
-    }),
-  requestFullscreen: () => set((s) => ({ fsNonce: s.fsNonce + 1 })),
+  setQueueOpen: (v) => set({ queueOpen: v }),
 
   start: (c, playlistId) => cmd(c, '', playlistId ? { playlist_id: playlistId } : {}),
   join: (c) => cmd(c, '/join'),

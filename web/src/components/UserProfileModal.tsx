@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Check, Clock, Headphones, MessageCircle, UserPlus } from 'lucide-react'
 import { listeningFor, useListen } from '../listen'
+import { useCall } from '../call'
 import { dmTitle } from '../store'
 import { api } from '../lib/api'
 import { useApp } from '../store'
@@ -23,7 +24,7 @@ export function UserProfileModal() {
   const [sent, setSent] = useState(false)
   const sessions = useListen((s) => s.sessions)
   const channels = useApp((s) => s.channels)
-  const joinListen = useListen((s) => s.join)
+  const joinCall = useCall((s) => s.join)
 
   const u = userId ? users[userId] : null
   if (!userId || !u || !me) return null
@@ -97,12 +98,13 @@ export function UserProfileModal() {
                 <Button
                   className="mt-2 w-full py-1.5 text-xs"
                   onClick={async () => {
-                    await joinListen(ls.channel_id).catch(() => {})
+                    // Listening happens inside the call: joining it seats you.
+                    await joinCall(ls.channel_id).catch(() => {})
                     close()
                     navigate(ch.kind === 'dm' ? `/app/dm/${ch.id}` : `/app/g/${ch.group_id}/${ch.id}`)
                   }}
                 >
-                  <Headphones size={14} /> Listen along
+                  <Headphones size={14} /> Join the call and listen
                 </Button>
               )}
             </div>

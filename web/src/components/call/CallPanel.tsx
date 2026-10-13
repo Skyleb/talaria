@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ChevronDown, Expand, Grid2x2, Headphones, HeadphoneOff, Maximize2, Mic, MicOff, Monitor, MonitorOff,
+  ChevronDown, Ear, EarOff, Expand, Grid2x2, Headphones, ListMusic, Maximize2, Mic, MicOff, Monitor, MonitorOff,
   Phone, PhoneOff, Video, VideoOff, Volume2, VolumeX,
 } from 'lucide-react'
 import { useCall, type RemoteFeed } from '../../call'
+import { useListen } from '../../listen'
 import { mixer } from '../../audio/mixer'
 import { displayName, dmTitle, useApp } from '../../store'
 import { Avatar } from '../Avatar'
 import { Button, cx } from '../ui'
+import { ListenStage } from './ListenStage'
+import { QueuePanel } from './QueuePanel'
+import { StartListenModal } from '../listen/queue'
 
 // CallPanel renders at the top of a channel: a join banner when a call is in
 // progress, or a slim "you're in this call" banner while the call UI is
@@ -18,13 +22,18 @@ export function CallPanel({ channelId }: { channelId: string }) {
   const joinedChannelId = useCall((s) => s.joinedChannelId)
   const minimized = useCall((s) => s.minimized)
   const setMinimized = useCall((s) => s.setMinimized)
+  const nowPlaying = useListen((s) => {
+    const st = s.sessions[channelId]
+    return st?.session ? (st.items.find((i) => i.id === st.session!.current_item_id)?.title ?? null) : null
+  })
 
   if (joinedChannelId === channelId && minimized) {
     return (
       <div className="flex items-center gap-3 border-b border-edge bg-success/10 px-4 py-2">
         <LiveDot />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-          You're in this call
+        <span className="min-w-0 flex-1 truncate text-sm text-ink">
+          <span className="font-medium">You're in this call</span>
+          {nowPlaying && <span className="text-ink-1"> · 🎧 {nowPlaying}</span>}
         </span>
         <Button className="px-3 py-1.5 text-xs" onClick={() => setMinimized(false)}>
           <Expand size={14} /> Open call
@@ -33,7 +42,7 @@ export function CallPanel({ channelId }: { channelId: string }) {
     )
   }
   if (joinedChannelId !== channelId && participants.length > 0) {
-    return <JoinBanner channelId={channelId} />
+    return <JoinBanner channelId={channelId} nowPlaying={nowPlaying} />
   }
   return null
 }
@@ -47,7 +56,7 @@ function LiveDot() {
   )
 }
 
-function JoinBanner({ channelId }: { channelId: string }) {
+function JoinBanner({ channelId, nowPlaying }: { channelId: string; nowPlaying: string | null }) {
   const participants = useCall((s) => s.calls[channelId]) ?? []
   const join = useCall((s) => s.join)
   const users = useApp((s) => s.users)
@@ -55,9 +64,10 @@ function JoinBanner({ channelId }: { channelId: string }) {
   return (
     <div className="flex items-center gap-3 border-b border-edge bg-bg-2 px-4 py-2">
       <LiveDot />
-      <div className="min-w-0 flex-1 text-sm">
-        <span className="font-medium text-ink">Voice call in progress</span>
-        <span className="ml-2 truncate text-ink-1">{names}</span>
+      <div className="min-w-0 flex-1 truncate text-sm">
+        <span className="font-medium text-ink">{nowPlaying ? 'Call · listening together' : 'Voice call in progress'}</span>
+        <span className="ml-2 text-ink-1">{names}</span>
+        {nowPlaying && <span className="ml-2 text-ink-2">🎧 {nowPlaying}</span>}
       </div>
       <Button className="px-3 py-1.5 text-xs" onClick={() => join(channelId)}>
         <Phone size={14} /> Join
@@ -67,11 +77,11 @@ function JoinBanner({ channelId }: { channelId: string }) {
 }
 
 // GlobalCall mounts once in AppShell. It owns the remote audio (so sound
-// keeps playing wherever you browse) and shows the full-screen call view
-// unless minimized (then the ActivityBanners strip offers the way back).
+// keeps playing wherever you browse) and the full-screen call view. The view
+// stays mounted while minimized (hidden) so a shared player inside it keeps
+// playing; the ActivityBanners strip offers the way back.
 export function GlobalCall() {
   const joinedChannelId = useCall((s) => s.joinedChannelId)
-  const minimized = useCall((s) => s.minimized)
   const remoteFeeds = useCall((s) => s.remoteFeeds)
   if (!joinedChannelId) return null
   const audioFeeds = remoteFeeds.filter((f) => f.kind === 'mic')
@@ -81,7 +91,7 @@ export function GlobalCall() {
       {audioFeeds.map((f) => (
         <AudioSink key={f.key} feed={f} />
       ))}
-      {!minimized && <CallOverlay channelId={joinedChannelId} />}
+      <CallOverlay key={joinedChannelId} channelId={joinedChannelId} />
     </>
   )
 }
@@ -131,10 +141,14 @@ interface Tile {
   mirror?: boolean
   userId?: string
   self?: boolean
+  // listen marks the shared-player tile.
+  listen?: boolean
   label: string
   muted?: boolean
   speaking?: boolean
 }
+
+const LISTEN_KEY = 'listen'
 
 function useTiles(channelId: string): Tile[] {
   const participants = useCall((s) => s.calls[channelId]) ?? []
@@ -143,11 +157,13 @@ function useTiles(channelId: string): Tile[] {
   const localScreen = useCall((s) => s.localScreenStream)
   const selfMuted = useCall((s) => s.muted)
   const speaking = useCall((s) => s.speaking)
+  const listening = useListen((s) => !!s.sessions[channelId]?.session)
   const users = useApp((s) => s.users)
   const me = useApp((s) => s.me)
 
   return useMemo(() => {
     const tiles: Tile[] = []
+    if (listening) tiles.push({ key: LISTEN_KEY, listen: true, label: 'Listening together' })
     const videoFeeds = remoteFeeds.filter((f) => f.kind !== 'mic')
     const mutedOf = (uid: string) => participants.find((p) => p.user_id === uid)?.muted
     for (const f of videoFeeds) {
@@ -178,7 +194,7 @@ function useTiles(channelId: string): Tile[] {
       tiles.push({ key: `avatar-${me.id}`, userId: me.id, self: true, label: 'You', muted: selfMuted, speaking: !!speaking.me })
     }
     return tiles
-  }, [participants, remoteFeeds, localCam, localScreen, selfMuted, speaking, users, me])
+  }, [participants, remoteFeeds, localCam, localScreen, selfMuted, speaking, listening, users, me])
 }
 
 // useMixerState polls the audio context so the "tap to hear" prompt can
@@ -193,25 +209,42 @@ function useMixerState() {
 }
 
 function CallOverlay({ channelId }: { channelId: string }) {
+  const minimized = useCall((s) => s.minimized)
   const setMinimized = useCall((s) => s.setMinimized)
   const connecting = useCall((s) => s.connecting)
   const mediaError = useCall((s) => s.mediaError)
   const remoteFeeds = useCall((s) => s.remoteFeeds)
+  const listening = useListen((s) => !!s.sessions[channelId]?.session)
+  const queueOpen = useListen((s) => s.queueOpen)
+  const setQueueOpen = useListen((s) => s.setQueueOpen)
   const title = useCallTitle(channelId)
   const tiles = useTiles(channelId)
   const mixerState = useMixerState()
   const [focusKey, setFocusKey] = useState<string | null>(null)
+  const [startOpen, setStartOpen] = useState(false)
 
   const focused = tiles.find((t) => t.key === focusKey) ?? null
   // If the focused feed disappears (participant left), fall back to the grid.
   useEffect(() => {
     if (focusKey && !tiles.some((t) => t.key === focusKey)) setFocusKey(null)
   }, [focusKey, tiles])
+  // A shared player takes the stage when it appears; the queue closes when
+  // the session ends.
+  useEffect(() => {
+    if (listening) setFocusKey(LISTEN_KEY)
+    else setQueueOpen(false)
+  }, [listening, setQueueOpen])
 
   const needsTap = mixerState === 'suspended' && remoteFeeds.some((f) => f.kind === 'mic')
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-bg-0 pt-[env(safe-area-inset-top)]">
+    <div
+      className={cx(
+        'fixed inset-0 z-50 flex flex-col bg-bg-0 pt-[env(safe-area-inset-top)]',
+        minimized && 'invisible pointer-events-none',
+      )}
+      aria-hidden={minimized}
+    >
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-edge px-4">
         <LiveDot />
         <h1 className="truncate text-sm font-semibold text-ink">{title}</h1>
@@ -234,17 +267,17 @@ function CallOverlay({ channelId }: { channelId: string }) {
         </button>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+      <div className={cx('flex min-h-0 flex-1 flex-col gap-2 p-3', queueOpen && 'sm:mr-80')}>
         {focused ? (
           <>
-            <FocusedTile tile={focused} onBack={() => setFocusKey(null)} />
+            <FocusedTile tile={focused} channelId={channelId} onBack={() => setFocusKey(null)} />
             {tiles.length > 1 && (
               <div className="flex shrink-0 gap-2 overflow-x-auto pb-1">
                 {tiles
                   .filter((t) => t.key !== focused.key)
                   .map((t) => (
                     <div key={t.key} className="w-36 shrink-0">
-                      <TileView tile={t} onClick={() => setFocusKey(t.key)} />
+                      <TileView tile={t} channelId={channelId} onClick={() => setFocusKey(t.key)} />
                     </div>
                   ))}
               </div>
@@ -262,7 +295,7 @@ function CallOverlay({ channelId }: { channelId: string }) {
             )}
           >
             {tiles.map((t) => (
-              <TileView key={t.key} tile={t} onClick={() => setFocusKey(t.key)} hint="Tap to enlarge" />
+              <TileView key={t.key} tile={t} channelId={channelId} onClick={() => setFocusKey(t.key)} hint="Tap to enlarge" />
             ))}
           </div>
         )}
@@ -271,14 +304,17 @@ function CallOverlay({ channelId }: { channelId: string }) {
       {connecting && <p className="text-center text-xs text-ink-2">Connecting…</p>}
       {mediaError && <p className="px-4 text-center text-xs text-danger">{mediaError}</p>}
       <div className="shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1">
-        <Controls />
+        <Controls onListen={() => (listening ? setQueueOpen(!queueOpen) : setStartOpen(true))} listening={listening} queueOpen={queueOpen} />
       </div>
+
+      {queueOpen && listening && !minimized && <QueuePanel channelId={channelId} onClose={() => setQueueOpen(false)} />}
+      <StartListenModal open={startOpen} onClose={() => setStartOpen(false)} channelId={channelId} />
     </div>
   )
 }
 
 // FocusedTile fills the stage; the expand button goes native fullscreen.
-function FocusedTile({ tile, onBack }: { tile: Tile; onBack: () => void }) {
+function FocusedTile({ tile, channelId, onBack }: { tile: Tile; channelId: string; onBack: () => void }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   function goFullscreen() {
     const el = wrapRef.current
@@ -297,7 +333,7 @@ function FocusedTile({ tile, onBack }: { tile: Tile; onBack: () => void }) {
   }
   return (
     <div ref={wrapRef} className="relative min-h-0 flex-1">
-      <TileView tile={tile} fill />
+      <TileView tile={tile} channelId={channelId} fill />
       <div className="absolute right-2 top-2 flex gap-1.5">
         <button
           title="Fullscreen"
@@ -320,11 +356,13 @@ function FocusedTile({ tile, onBack }: { tile: Tile; onBack: () => void }) {
 
 function TileView({
   tile,
+  channelId,
   fill,
   hint,
   onClick,
 }: {
   tile: Tile
+  channelId: string
   fill?: boolean
   hint?: string
   onClick?: () => void
@@ -332,6 +370,24 @@ function TileView({
   const users = useApp((s) => s.users)
   const [menu, setMenu] = useState(false)
   const canAdjust = !!tile.userId && !tile.self
+  if (tile.listen) {
+    return (
+      <div
+        onClick={fill ? undefined : onClick}
+        title={fill ? undefined : hint}
+        className={cx('relative overflow-hidden rounded-xl bg-black', fill ? 'h-full w-full' : 'aspect-video cursor-pointer hover:ring-2 hover:ring-accent/60')}
+      >
+        {fill ? (
+          <ListenStage channelId={channelId} fill />
+        ) : (
+          <div className="pointer-events-none flex h-full w-full flex-col items-center justify-center gap-1 bg-bg-1 text-ink-1">
+            <Headphones size={22} className="text-accent" />
+            <span className="text-[11px]">Listening together</span>
+          </div>
+        )}
+      </div>
+    )
+  }
   const body = tile.stream ? (
     <StreamVideo stream={tile.stream} mirror={tile.mirror} />
   ) : (
@@ -438,7 +494,7 @@ function StreamVideo({ stream, mirror }: { stream: MediaStream; mirror?: boolean
   )
 }
 
-function Controls() {
+function Controls({ onListen, listening, queueOpen }: { onListen: () => void; listening: boolean; queueOpen: boolean }) {
   const muted = useCall((s) => s.muted)
   const deafened = useCall((s) => s.deafened)
   const cameraOn = useCall((s) => s.cameraOn)
@@ -451,7 +507,7 @@ function Controls() {
         {muted ? <MicOff size={18} /> : <Mic size={18} />}
       </CtlBtn>
       <CtlBtn title={deafened ? 'Undeafen' : 'Deafen — silence everyone'} active={!deafened} onClick={toggleDeafen}>
-        {deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}
+        {deafened ? <EarOff size={18} /> : <Ear size={18} />}
       </CtlBtn>
       <CtlBtn title={cameraOn ? 'Turn camera off' : 'Turn camera on'} active={cameraOn} onClick={toggleCamera} disabled={!canCapture}>
         {cameraOn ? <Video size={18} /> : <VideoOff size={18} />}
@@ -463,6 +519,9 @@ function Controls() {
         disabled={!navigator.mediaDevices?.getDisplayMedia}
       >
         {sharing ? <MonitorOff size={18} /> : <Monitor size={18} />}
+      </CtlBtn>
+      <CtlBtn title={listening ? (queueOpen ? 'Hide the queue' : 'Show the queue') : 'Listen together'} active={listening && queueOpen} onClick={onListen}>
+        {listening ? <ListMusic size={18} /> : <Headphones size={18} />}
       </CtlBtn>
       <button
         title="Leave call"

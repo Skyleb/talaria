@@ -61,7 +61,18 @@ type Service struct {
 	log *slog.Logger
 	// mu serializes mutations; sessions are few and operations are quick.
 	mu sync.Mutex
+	// calls, when set, ties listening to the channel's voice call: only
+	// callers may start or join, and callers are seated automatically.
+	calls CallGate
 }
+
+// CallGate is the slice of the voice-call manager this package needs.
+type CallGate interface {
+	InCall(channelID, userID string) bool
+}
+
+// SetCallGate makes listening a part of voice calls (see CallGate).
+func (s *Service) SetCallGate(g CallGate) { s.calls = g }
 
 func New(st *store.Store, pub Publisher, log *slog.Logger) *Service {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -70,6 +81,71 @@ func New(st *store.Store, pub Publisher, log *slog.Logger) *Service {
 		log.Error("end dangling playback sessions", "err", err)
 	}
 	return &Service{st: st, pub: pub, log: log}
+}
+
+func (s *Service) requireInCall(ch *model.Channel, userID string) error {
+	if s.calls != nil && !s.calls.InCall(ch.ID, userID) {
+		return fail(409, "join the voice call first — listening together happens inside the call")
+	}
+	return nil
+}
+
+// OnCallJoined seats a new caller in the channel's live session, if any.
+func (s *Service) OnCallJoined(ctx context.Context, ch *model.Channel, userID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ps, err := s.active(ctx, ch)
+	if err != nil {
+		return
+	}
+	if err := s.st.JoinPlayback(ctx, ps.ID, userID); err != nil {
+		s.log.Error("listen: seat caller", "err", err)
+		return
+	}
+	s.broadcast(ctx, ch)
+}
+
+// OnCallLeft removes someone who left the call from the session.
+func (s *Service) OnCallLeft(ctx context.Context, ch *model.Channel, userID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ps, err := s.active(ctx, ch)
+	if err != nil {
+		return
+	}
+	members, err := s.st.PlaybackMemberIDs(ctx, ps.ID)
+	if err != nil || !contains(members, userID) {
+		return
+	}
+	if err := s.leaveLocked(ctx, ps, userID); err != nil {
+		s.log.Error("listen: unseat caller", "err", err)
+		return
+	}
+	s.broadcast(ctx, ch)
+}
+
+// OnCallEnded ends the session when the call is over.
+func (s *Service) OnCallEnded(ctx context.Context, ch *model.Channel) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ps, err := s.active(ctx, ch)
+	if err != nil {
+		return
+	}
+	if err := s.endLocked(ctx, ps); err != nil {
+		s.log.Error("listen: end with call", "err", err)
+		return
+	}
+	s.broadcast(ctx, ch)
+}
+
+func contains(ids []string, id string) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
 }
 
 func nowMS() int64 { return time.Now().UnixMilli() }
@@ -157,6 +233,9 @@ func (s *Service) requireHost(ps *model.PlaybackSession, userID string) error {
 // Start creates a session for the channel, optionally seeded from a saved
 // playlist, and joins the starter as host.
 func (s *Service) Start(ctx context.Context, ch *model.Channel, userID, fromPlaylistID string) (*State, error) {
+	if err := s.requireInCall(ch, userID); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := s.st.ActivePlaybackSession(ctx, ch.ID); err == nil {
@@ -195,6 +274,9 @@ func (s *Service) Start(ctx context.Context, ch *model.Channel, userID, fromPlay
 }
 
 func (s *Service) Join(ctx context.Context, ch *model.Channel, userID string) (*State, error) {
+	if err := s.requireInCall(ch, userID); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ps, err := s.active(ctx, ch)

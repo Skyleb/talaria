@@ -41,6 +41,28 @@ type Manager struct {
 	// ring, when set, is told about DM calls so offline users can be
 	// notified (push) in addition to the gateway call.ring event.
 	ring func(channelID, fromUserID string, toUserIDs []string)
+	// hooks, when set, follow call membership (listening together lives
+	// inside calls).
+	hooks SessionHooks
+}
+
+// SessionHooks is told about call membership changes. Implemented by the
+// listen service, which seats callers in the channel's listening session.
+type SessionHooks interface {
+	OnCallJoined(ctx context.Context, ch *model.Channel, userID string)
+	OnCallLeft(ctx context.Context, ch *model.Channel, userID string)
+	OnCallEnded(ctx context.Context, ch *model.Channel)
+}
+
+// SetSessionHooks installs the membership follower.
+func (m *Manager) SetSessionHooks(h SessionHooks) { m.hooks = h }
+
+// InCall reports whether the user is currently in the channel's call.
+func (m *Manager) InCall(channelID, userID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r := m.userRoom[userID]
+	return r != nil && r.channel.ID == channelID
 }
 
 // SetRingNotifier installs an out-of-band notifier for incoming DM calls.
@@ -251,6 +273,13 @@ func (m *Manager) Join(ctx context.Context, userID, channelID string) error {
 	}
 
 	r.broadcastState()
+	if m.hooks != nil {
+		go func() {
+			hctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			m.hooks.OnCallJoined(hctx, ch, userID)
+		}()
+	}
 	// Send the new peer a subscriber offer for any already-published tracks.
 	r.mu.Lock()
 	r.syncLocked()
@@ -281,6 +310,17 @@ func (m *Manager) Leave(userID string) {
 		m.closeRoom(r)
 	}
 	r.broadcastState()
+	if m.hooks != nil {
+		go func() {
+			hctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if empty {
+				m.hooks.OnCallEnded(hctx, r.channel)
+			} else {
+				m.hooks.OnCallLeft(hctx, r.channel, userID)
+			}
+		}()
+	}
 }
 
 func (m *Manager) closeRoomIfEmpty(r *Room) {

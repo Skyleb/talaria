@@ -8,7 +8,7 @@ import { PageHeader } from './AppShell'
 import { MessageList } from '../components/chat/MessageList'
 import { Composer } from '../components/chat/Composer'
 import { CallPanel } from '../components/call/CallPanel'
-import { ListenPanel, StartListenModal } from '../components/listen/ListenPanel'
+import { StartListenModal } from '../components/listen/queue'
 import { useListen } from '../listen'
 import { Avatar } from '../components/Avatar'
 import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
@@ -124,7 +124,6 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
           }
         />
         <CallPanel channelId={channelId} />
-        <ListenPanel channelId={channelId} />
         <MessageList channelId={channelId} onReply={setReplyTo} />
         <TypingLine channelId={channelId} />
         <Composer channelId={channelId} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
@@ -270,8 +269,9 @@ function ChatSettingsModal({ open, onClose, channelId }: { open: boolean; onClos
   )
 }
 
-// ListenButton starts a listening session (hidden while one is running:
-// the panel takes over).
+// ListenButton starts listening together: it joins (or starts) the voice
+// call and opens a queue. Hidden while a session is already running — the
+// call banner is the way in then.
 function ListenButton({ channelId }: { channelId: string }) {
   const active = useListen((s) => !!s.sessions[channelId]?.session)
   const [open, setOpen] = useState(false)
@@ -280,7 +280,7 @@ function ListenButton({ channelId }: { channelId: string }) {
     <>
       <button
         className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-accent"
-        title="Listen together"
+        title="Listen together (in a voice call)"
         onClick={() => setOpen(true)}
       >
         <Headphones size={18} />

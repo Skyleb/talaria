@@ -165,9 +165,13 @@ func run(stop <-chan struct{}) {
 	srv.StartAttachmentGC()
 	startSessionGC(st, log)
 
-	// Phase 4: synchronized listening sessions.
+	// Phase 4: synchronized listening sessions — now part of voice calls.
 	srv.Listen = listen.New(st, hub, log)
 	hub.SetListenProvider(srv.Listen)
+	if sfu != nil {
+		srv.Listen.SetCallGate(sfu)
+		sfu.SetSessionHooks(srv.Listen)
+	}
 
 	// Web Push: VAPID keys live in the database, generated on first run.
 	if sender, err := push.New(context.Background(), st, log, pushContact(cfg)); err != nil {

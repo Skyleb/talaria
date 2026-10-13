@@ -8,7 +8,6 @@ import { useCall } from '../call'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
 import { GlobalCall } from '../components/call/CallPanel'
-import { GlobalListen } from '../components/listen/GlobalListen'
 import { InstallPrompt } from '../components/InstallPrompt'
 import { ActivityBanners } from '../components/ActivityBanners'
 import { AvatarCropper } from '../components/AvatarCropper'
@@ -114,7 +113,6 @@ export default function AppShell() {
       )}
       </div>
       <GlobalCall />
-      <GlobalListen />
       <UserProfileModal />
       <SearchModal />
       <InstallPrompt />
