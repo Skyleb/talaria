@@ -151,8 +151,18 @@ export interface ServerConfig {
     url: string
     interval_minutes: number
   }
+  lan_dns: {
+    enabled: boolean
+    upstream: string
+    answer_ip: string
+  }
   webrtc: {
     udp_port: number
     public_ip: string
   }
+}
+
+export interface LanDNSStatus {
+  active: boolean
+  error: string
 }

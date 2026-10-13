@@ -24,6 +24,7 @@ import (
 	"github.com/skyle/talaria/internal/config"
 	"github.com/skyle/talaria/internal/ddns"
 	"github.com/skyle/talaria/internal/gateway"
+	"github.com/skyle/talaria/internal/landns"
 	"github.com/skyle/talaria/internal/rtc"
 	"github.com/skyle/talaria/internal/store"
 	"github.com/skyle/talaria/internal/tlsx"
@@ -148,6 +149,22 @@ func main() {
 	}
 
 	handler := srv.Router()
+
+	// LAN DNS: answers this server's domain with its LAN IP for devices on
+	// the local network (fixes routers with broken NAT loopback). Also
+	// runtime-reconfigurable from the admin settings UI.
+	lanDNS := landns.NewRunner(log)
+	defer lanDNS.Stop()
+	srv.LanDNS = lanDNS
+	if cfg.LanDNS.Enabled {
+		lcfg, err := landns.FromAppConfig(cfg.LanDNS, cfg.DDNS.Domain, cfg.TLS.Domain)
+		if err == nil {
+			err = lanDNS.Set(lcfg)
+		}
+		if err != nil {
+			log.Error("lan dns not started", "err", err)
+		}
+	}
 
 	// Decide the serving mode.
 	useACME := false

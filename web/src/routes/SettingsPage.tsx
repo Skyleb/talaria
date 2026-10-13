@@ -6,7 +6,7 @@ import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
 import { Button, cx, ErrorText, Input, Label, Select } from '../components/ui'
 import { PageHeader } from './AppShell'
-import type { Invite, ServerConfig, SessionInfo, User } from '../lib/types'
+import type { Invite, LanDNSStatus, ServerConfig, SessionInfo, User } from '../lib/types'
 import { formatDateTime, formatBytes } from '../lib/time'
 
 export default function SettingsPage({ onMenu }: { onMenu: () => void }) {
@@ -347,17 +347,24 @@ function Toggle({
 function ServerConfigSection() {
   const [cfg, setCfg] = useState<ServerConfig | null>(null)
   const [configPath, setConfigPath] = useState('')
+  const [lanIP, setLanIP] = useState('')
+  const [dnsStatus, setDnsStatus] = useState<LanDNSStatus | null>(null)
   const [restartItems, setRestartItems] = useState<string[]>([])
+  const [warnings, setWarnings] = useState<string[]>([])
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     api
-      .get<{ config: ServerConfig; config_path: string }>('/api/v1/admin/config')
+      .get<{ config: ServerConfig; config_path: string; lan_ip: string; landns_status: LanDNSStatus }>(
+        '/api/v1/admin/config',
+      )
       .then((r) => {
         setCfg(r.config)
         setConfigPath(r.config_path)
+        setLanIP(r.lan_ip)
+        setDnsStatus(r.landns_status)
       })
       .catch((e: any) => setErr(e?.message ?? 'Could not load server configuration'))
   }, [])
@@ -376,13 +383,18 @@ function ServerConfigSection() {
     setErr('')
     setMsg('')
     setRestartItems([])
+    setWarnings([])
     try {
-      const r = await api.put<{ config: ServerConfig; restart_required: string[] }>(
-        '/api/v1/admin/config',
-        cfg,
-      )
+      const r = await api.put<{
+        config: ServerConfig
+        restart_required: string[]
+        warnings: string[]
+        landns_status: LanDNSStatus
+      }>('/api/v1/admin/config', cfg)
       setCfg(r.config)
       setRestartItems(r.restart_required ?? [])
+      setWarnings(r.warnings ?? [])
+      setDnsStatus(r.landns_status)
       setMsg('Saved.')
     } catch (e: any) {
       setErr(e?.message ?? 'Could not save')
@@ -503,6 +515,50 @@ function ServerConfigSection() {
         </div>
 
         <div className="space-y-3">
+          <SubHead>LAN DNS</SubHead>
+          <Toggle
+            checked={cfg.lan_dns.enabled}
+            onChange={(v) => patch('lan_dns', { enabled: v })}
+            label="Answer DNS for this server's domain on the local network"
+            hint="Fixes routers that can't reach your domain from inside your own WiFi (broken NAT loopback). Applies immediately on save."
+          />
+          {cfg.lan_dns.enabled && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Upstream resolvers</Label>
+                  <Input
+                    value={cfg.lan_dns.upstream}
+                    onChange={(e) => patch('lan_dns', { upstream: e.target.value })}
+                    placeholder="1.1.1.1, 8.8.8.8"
+                  />
+                </div>
+                <div>
+                  <Label>Answer IP (optional)</Label>
+                  <Input
+                    value={cfg.lan_dns.answer_ip}
+                    onChange={(e) => patch('lan_dns', { answer_ip: e.target.value })}
+                    placeholder={lanIP ? `auto (${lanIP})` : 'auto-detected'}
+                  />
+                </div>
+              </div>
+              {dnsStatus?.active ? (
+                <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
+                  LAN DNS is running. Final step: in your router's DHCP/LAN settings, set the DNS
+                  server to <strong>{lanIP || 'this machine’s IP'}</strong> — then every device
+                  on your network resolves the domain locally. Devices pick it up when they
+                  reconnect to WiFi.
+                </p>
+              ) : dnsStatus?.error ? (
+                <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+                  LAN DNS is not running: {dnsStatus.error}
+                </p>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        <div className="space-y-3">
           <SubHead>Calls (WebRTC)</SubHead>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -529,6 +585,11 @@ function ServerConfigSection() {
               Restart Talaria to apply: {restartItems.join(', ')}.
             </p>
           )}
+          {warnings.map((w) => (
+            <p key={w} className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
+              {w}
+            </p>
+          ))}
           <ErrorText>{err}</ErrorText>
           {configPath && <p className="text-xs text-ink-2">Stored in {configPath}</p>}
         </div>

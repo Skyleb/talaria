@@ -12,6 +12,7 @@ import (
 	"github.com/skyle/talaria/internal/config"
 	"github.com/skyle/talaria/internal/ddns"
 	"github.com/skyle/talaria/internal/gateway"
+	"github.com/skyle/talaria/internal/landns"
 	"github.com/skyle/talaria/internal/store"
 )
 
@@ -25,6 +26,8 @@ type Server struct {
 	Version string
 	// DDNS lets the admin config endpoint hot-apply dynamic-DNS changes.
 	DDNS *ddns.Runner
+	// LanDNS lets the admin config endpoint hot-apply LAN DNS changes.
+	LanDNS *landns.Runner
 
 	// cfgMu serializes admin edits to Config.
 	cfgMu sync.Mutex

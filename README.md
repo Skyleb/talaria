@@ -56,6 +56,14 @@ No domain? `mode = "selfsigned"` serves HTTPS on your LAN with a self-signed
 certificate (browsers warn once). Plain HTTP stays available on `:8080` for
 localhost.
 
+> **Domain not working from your own WiFi?** Many home routers can't reach
+> their own public IP from inside the network (broken NAT loopback), which
+> shows up as a blank page on LAN devices while everything works remotely.
+> Enable **LAN DNS** in Settings → Admin — server configuration: Talaria then
+> answers DNS for its own domain with the server's LAN IP and forwards all
+> other queries upstream. One router change applies it to every device: set
+> the DHCP DNS server to the Talaria machine's IP.
+
 > **CGNAT warning:** if your router's WAN IP differs from the IP shown by
 > "what is my IP" sites, your ISP uses CGNAT and inbound connections cannot
 > reach you; ask your ISP for a public IP or use a tunnel (Tailscale Funnel,

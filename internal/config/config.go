@@ -13,6 +13,7 @@ type Config struct {
 	Server ServerConfig `toml:"server"`
 	TLS    TLSConfig    `toml:"tls"`
 	DDNS   DDNSConfig   `toml:"ddns"`
+	LanDNS LanDNSConfig `toml:"lan_dns"`
 	WebRTC WebRTCConfig `toml:"webrtc"`
 	Net    NetConfig    `toml:"net"`
 
@@ -55,6 +56,19 @@ type DDNSConfig struct {
 	IntervalMinutes int `toml:"interval_minutes"`
 }
 
+// LanDNSConfig embeds a small DNS forwarder that answers queries for this
+// server's domain with its LAN IP (fixing routers with broken NAT loopback)
+// and forwards everything else upstream. Point the router's DHCP DNS at this
+// machine to apply it to every device on the network.
+type LanDNSConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	ListenIP string `toml:"listen_ip"` // default: all interfaces
+	Port     int    `toml:"port"`      // default 53
+	Upstream string `toml:"upstream"`  // comma-separated resolvers
+	AnswerIP string `toml:"answer_ip"` // default: auto-detect LAN IP
+	TTL      int    `toml:"ttl_seconds"`
+}
+
 // WebRTCConfig is written now so Phase 2 (voice/video SFU) is purely additive.
 type WebRTCConfig struct {
 	UDPPort    int    `toml:"udp_port"`
@@ -83,6 +97,11 @@ func Default() *Config {
 		DDNS: DDNSConfig{
 			Provider:        "duckdns",
 			IntervalMinutes: 5,
+		},
+		LanDNS: LanDNSConfig{
+			Port:     53,
+			Upstream: "1.1.1.1, 8.8.8.8",
+			TTL:      60,
 		},
 		WebRTC: WebRTCConfig{
 			UDPPort:  50000,

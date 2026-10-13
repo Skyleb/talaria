@@ -1,11 +1,14 @@
 package api
 
 import (
+	"net"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/skyle/talaria/internal/ddns"
+	"github.com/skyle/talaria/internal/landns"
 )
 
 // configPayload is the admin-editable slice of talaria.toml, exposed over
@@ -31,6 +34,11 @@ type configPayload struct {
 		URL             string `json:"url"`
 		IntervalMinutes int    `json:"interval_minutes"`
 	} `json:"ddns"`
+	LanDNS struct {
+		Enabled  bool   `json:"enabled"`
+		Upstream string `json:"upstream"`
+		AnswerIP string `json:"answer_ip"`
+	} `json:"lan_dns"`
 	WebRTC struct {
 		UDPPort  int    `json:"udp_port"`
 		PublicIP string `json:"public_ip"`
@@ -54,6 +62,9 @@ func (s *Server) configSnapshot() configPayload {
 	p.DDNS.Token = c.DDNS.Token
 	p.DDNS.URL = c.DDNS.URL
 	p.DDNS.IntervalMinutes = c.DDNS.IntervalMinutes
+	p.LanDNS.Enabled = c.LanDNS.Enabled
+	p.LanDNS.Upstream = c.LanDNS.Upstream
+	p.LanDNS.AnswerIP = c.LanDNS.AnswerIP
 	p.WebRTC.UDPPort = c.WebRTC.UDPPort
 	p.WebRTC.PublicIP = c.WebRTC.PublicIP
 	return p
@@ -96,6 +107,19 @@ func validateConfig(p *configPayload) string {
 			return "custom DDNS needs an update URL"
 		}
 	}
+	if p.LanDNS.Enabled {
+		if p.TLS.Domain == "" && p.DDNS.Domain == "" {
+			return "LAN DNS needs a domain (set one under HTTPS or DDNS)"
+		}
+		if _, err := landns.NormalizeUpstreams(p.LanDNS.Upstream); err != nil {
+			return "LAN DNS upstream resolvers: " + err.Error()
+		}
+		if s := strings.TrimSpace(p.LanDNS.AnswerIP); s != "" {
+			if ip := net.ParseIP(s); ip == nil || ip.To4() == nil {
+				return "LAN DNS answer IP must be an IPv4 address (or blank for auto)"
+			}
+		}
+	}
 	return ""
 }
 
@@ -122,9 +146,27 @@ func (s *Server) handleAdminGetConfig(w http.ResponseWriter, r *http.Request) {
 	s.cfgMu.Lock()
 	defer s.cfgMu.Unlock()
 	writeJSON(w, 200, map[string]any{
-		"config":      s.configSnapshot(),
-		"config_path": s.Config.Path(),
+		"config":        s.configSnapshot(),
+		"config_path":   s.Config.Path(),
+		"lan_ip":        lanIPString(),
+		"landns_status": s.lanDNSStatus(),
 	})
+}
+
+// lanDNSStatus reports whether the LAN DNS server is running and why not.
+func (s *Server) lanDNSStatus() map[string]any {
+	if s.LanDNS == nil {
+		return map[string]any{"active": false, "error": ""}
+	}
+	active, lastErr := s.LanDNS.Status()
+	return map[string]any{"active": active, "error": lastErr}
+}
+
+func lanIPString() string {
+	if ip := landns.DetectLanIP(); ip != nil {
+		return ip.String()
+	}
+	return ""
 }
 
 func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
@@ -154,6 +196,10 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	c.DDNS.Token = p.DDNS.Token
 	c.DDNS.URL = p.DDNS.URL
 	c.DDNS.IntervalMinutes = p.DDNS.IntervalMinutes
+	c.LanDNS.Enabled = p.LanDNS.Enabled
+	c.LanDNS.Upstream = p.LanDNS.Upstream
+	c.LanDNS.AnswerIP = p.LanDNS.AnswerIP
+	lanDNSCfg := c.LanDNS
 	c.WebRTC.UDPPort = p.WebRTC.UDPPort
 	c.WebRTC.PublicIP = p.WebRTC.PublicIP
 	err := c.Save()
@@ -163,8 +209,9 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// DDNS is the one subsystem we can hot-apply; everything else that
-	// changed is reported back as restart-required.
+	// DDNS and LAN DNS hot-apply; everything else that changed is reported
+	// back as restart-required.
+	warnings := []string{}
 	if s.DDNS != nil {
 		if p.DDNS.Enabled {
 			domain := p.DDNS.Domain
@@ -182,9 +229,24 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 			s.DDNS.Stop()
 		}
 	}
+	if s.LanDNS != nil {
+		if p.LanDNS.Enabled {
+			lcfg, err := landns.FromAppConfig(lanDNSCfg, p.DDNS.Domain, p.TLS.Domain)
+			if err == nil {
+				err = s.LanDNS.Set(lcfg)
+			}
+			if err != nil {
+				warnings = append(warnings, "LAN DNS could not start: "+err.Error())
+			}
+		} else {
+			s.LanDNS.Stop()
+		}
+	}
 
 	writeJSON(w, 200, map[string]any{
 		"config":           p,
 		"restart_required": restartRequired(old, p),
+		"warnings":         warnings,
+		"landns_status":    s.lanDNSStatus(),
 	})
 }
