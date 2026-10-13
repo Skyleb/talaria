@@ -65,6 +65,20 @@ body {
   overscroll-behavior: none;
 }
 
+/* iOS zooms the page in when a field with text smaller than 16px gets focus,
+   and in home-screen (standalone) mode it never zooms back out, leaving the
+   whole app slightly too big with scrolling in both directions. Keep every
+   editable field at 16px on touch devices. Unlayered so it beats Tailwind's
+   text-sm utilities. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea,
+  [contenteditable='true'] {
+    font-size: max(16px, 1em);
+  }
+}
+
 /* Theme switches feel intentional instead of abrupt. */
 body, header, nav, main, aside, section, button, input, select, textarea {
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;

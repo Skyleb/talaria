@@ -189,7 +189,7 @@ export function MessageItem({
 
       {/* Long-press / right-click sheet (mobile) */}
       {actionsOpen && !m.deleted_at && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:hidden" onClick={() => setActionsOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 pb-[env(safe-area-inset-bottom)] sm:hidden" onClick={() => setActionsOpen(false)}>
           <div className="w-full rounded-t-2xl bg-bg-1 p-3" onClick={(e) => e.stopPropagation()}>
             <SheetBtn
               onClick={() => {

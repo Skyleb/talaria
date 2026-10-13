@@ -155,7 +155,7 @@ export function Modal({
   if (!open) return null
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pb-[env(safe-area-inset-bottom)] sm:items-center sm:pb-0"
       onClick={onClose}
     >
       <div

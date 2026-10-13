@@ -157,7 +157,7 @@ function CallOverlay({ channelId }: { channelId: string }) {
   }, [focusKey, tiles])
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-bg-0">
+    <div className="fixed inset-0 z-50 flex flex-col bg-bg-0 pt-[env(safe-area-inset-top)]">
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-edge px-4">
         <LiveDot />
         <h1 className="truncate text-sm font-semibold text-ink">{title}</h1>

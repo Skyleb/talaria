@@ -65,7 +65,7 @@ export default function AppShell() {
   }, [])
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-bg-0">
+    <div className="flex h-dvh flex-col overflow-hidden bg-bg-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       {/* Live call / listening sessions you are in but not looking at. */}
       <ActivityBanners />
       <div className="relative flex min-h-0 flex-1">

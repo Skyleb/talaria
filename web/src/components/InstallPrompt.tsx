@@ -67,7 +67,7 @@ export function InstallPrompt() {
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-40 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[26rem]">
+    <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[26rem]">
       <div className="rounded-2xl border border-edge bg-bg-1 p-4 shadow-xl">
         <div className="flex items-start gap-3">
           <Logo size={44} className="shadow" />
