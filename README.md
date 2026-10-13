@@ -91,6 +91,16 @@ is on, a `lan.talaria.gg`-style subdomain plus the `_acme-challenge` TXT
 records for its certificate. Leave the domain on Porkbun's own nameservers
 (no proxy or CDN in front — calls need direct UDP).
 
+**Already running on DuckDNS?** Switch in two saves, because the moment the
+HTTPS domain changes the old name stops being served:
+
+1. Keep the HTTPS domain as it is. Under Dynamic DNS choose Porkbun, paste
+   the keys, and put the new domain (e.g. `talaria.gg`) in the *DDNS domain*
+   field. Save — Talaria replaces Porkbun's parking records with your IP.
+2. After a minute, change the HTTPS domain (and the home-access domain) to
+   the new names, save, and restart. Talaria refuses the switch while the new
+   name still points somewhere else.
+
 No domain? `mode = "selfsigned"` serves HTTPS on your LAN with a self-signed
 certificate (browsers warn once). Plain HTTP stays available on `:8080` for
 localhost.

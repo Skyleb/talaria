@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -112,6 +114,9 @@ func validateConfig(p *configPayload) string {
 		if err := ddns.Validate(ddnsConfig(p, domain)); err != nil {
 			return err.Error()
 		}
+		if p.DDNS.Provider == "duckdns" && !isDuckDNS(domain) {
+			return "DuckDNS can only update *.duckdns.org names; " + domain + " needs the Porkbun provider (or set the DDNS domain to your DuckDNS name)"
+		}
 	}
 	if p.LanAccess.Enabled {
 		domain := strings.TrimSpace(p.LanAccess.Domain)
@@ -124,12 +129,50 @@ func validateConfig(p *configPayload) string {
 			return "home network access requires HTTPS with a domain (Let's Encrypt)"
 		case !ddns.SupportsDNS01(p.DDNS.Provider):
 			return "home network access needs a DNS provider that can publish TXT records: choose DuckDNS or Porkbun under Dynamic DNS"
+		case p.DDNS.Provider == "duckdns" && !isDuckDNS(domain):
+			return "the home-access domain " + domain + " is not a DuckDNS name; switch the Dynamic DNS provider to Porkbun first"
 		}
 		if _, err := ddns.NewTXTSetter(p.DDNS.Provider, p.DDNS.Token, p.DDNS.Secret); err != nil {
 			return "home network access " + err.Error() + " (set under Dynamic DNS)"
 		}
 	}
 	return ""
+}
+
+func isDuckDNS(domain string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(domain)), ".duckdns.org")
+}
+
+// checkDomainSwitch guards against locking yourself out: once the HTTPS
+// domain changes, the old name stops being served and the new one only works
+// if Let's Encrypt can reach this server through it. So the new domain must
+// already resolve to the same address the old (working) one does. Returns a
+// user-facing message, or "" when the switch is fine or can't be judged.
+func checkDomainSwitch(oldDomain, newDomain string) string {
+	oldDomain = strings.ToLower(strings.TrimSpace(oldDomain))
+	newDomain = strings.ToLower(strings.TrimSpace(newDomain))
+	if oldDomain == "" || newDomain == "" || oldDomain == newDomain {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	oldIPs, err := net.DefaultResolver.LookupHost(ctx, oldDomain)
+	if err != nil || len(oldIPs) == 0 {
+		return "" // nothing to compare against
+	}
+	newIPs, err := net.DefaultResolver.LookupHost(ctx, newDomain)
+	if err != nil || len(newIPs) == 0 {
+		return newDomain + " does not resolve yet. Keep the current HTTPS domain, enable Dynamic DNS for " +
+			newDomain + " (set it as the DDNS domain), wait for the record to appear, then switch."
+	}
+	for _, ip := range newIPs {
+		if slices.Contains(oldIPs, ip) {
+			return ""
+		}
+	}
+	return newDomain + " currently points at " + strings.Join(newIPs, ", ") + ", not at this server (" +
+		strings.Join(oldIPs, ", ") + "). Keep the current HTTPS domain, set " + newDomain +
+		" as the DDNS domain so Talaria updates its record, wait a minute, then switch."
 }
 
 // ddnsConfig builds the updater config for the payload's DDNS section.
@@ -197,6 +240,15 @@ func (s *Server) handleAdminPutConfig(w http.ResponseWriter, r *http.Request) {
 	if msg := validateConfig(&p); msg != "" {
 		badRequest(w, msg)
 		return
+	}
+	s.cfgMu.Lock()
+	currentDomain := s.Config.TLS.Domain
+	s.cfgMu.Unlock()
+	if p.TLS.Mode == "auto" || p.TLS.Mode == "acme" {
+		if msg := checkDomainSwitch(currentDomain, p.TLS.Domain); msg != "" {
+			badRequest(w, msg)
+			return
+		}
 	}
 
 	s.cfgMu.Lock()
