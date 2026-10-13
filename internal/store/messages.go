@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 const msgCols = `id, channel_id, author_id, kind, content, reply_to_id, created_at, edited_at, deleted_at, mention_ids`

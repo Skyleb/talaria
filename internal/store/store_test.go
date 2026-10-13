@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 func testStore(t *testing.T) *Store {

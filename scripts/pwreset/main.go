@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/skyle/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/auth"
 	_ "modernc.org/sqlite"
 )
 

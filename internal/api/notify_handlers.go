@@ -8,9 +8,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/skyle/talaria/internal/auth"
-	"github.com/skyle/talaria/internal/model"
-	"github.com/skyle/talaria/internal/push"
+	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/push"
 )
 
 // --- Web Push subscriptions ---

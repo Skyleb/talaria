@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 // SearchHit is a message plus the FTS snippet with match markers.

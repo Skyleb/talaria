@@ -14,8 +14,8 @@ import (
 	"github.com/disintegration/imaging"
 	"github.com/gabriel-vasile/mimetype"
 
-	"github.com/skyle/talaria/internal/auth"
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 // MIME types allowed to render inline (everything else downloads as attachment).

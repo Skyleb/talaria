@@ -47,7 +47,7 @@ runner polls GitHub, so nothing inbound is exposed. To add it:
 1. Repo → Settings → Actions → Runners → **New self-hosted runner** → Linux.
 2. Download into `~/actions-runner` as the user you gave `install.sh`, then:
    ```bash
-   ./config.sh --url https://github.com/OWNER/talaria --token <TOKEN> \
+   ./config.sh --url https://github.com/Skyleb/talaria --token <TOKEN> \
      --labels talaria-server --unattended
    sudo ./svc.sh install && sudo ./svc.sh start
    ```

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 func (s *Store) CreateFile(ctx context.Context, f *model.File) error {

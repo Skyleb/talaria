@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/skyle/talaria/internal/auth"
-	"github.com/skyle/talaria/internal/model"
-	"github.com/skyle/talaria/internal/store"
+	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/store"
 )
 
 // handleSearch is full-text search over messages the caller can read.

@@ -59,6 +59,6 @@ Talaria host prepared at $Dir.
      Logs:       Get-Content $Dir\talaria.log -Tail 50 -Wait
   3. Continuous deployment: in the GitHub repo go to Settings > Actions > Runners > New self-hosted runner (Windows),
      download the runner into C:\actions-runner and configure it as a service running as SYSTEM so it can restart Talaria:
-       .\config.cmd --url https://github.com/OWNER/talaria --token <TOKEN> --labels talaria-server --unattended --runasservice --windowslogonaccount "NT AUTHORITY\SYSTEM"
+       .\config.cmd --url https://github.com/Skyleb/talaria --token <TOKEN> --labels talaria-server --unattended --runasservice --windowslogonaccount "NT AUTHORITY\SYSTEM"
      Every push to main then runs $Dir\deploy.ps1 with the fresh build (health-checked, auto-rollback).
 "@

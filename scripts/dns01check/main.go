@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/skyle/talaria/internal/tlsx"
+	"github.com/skyleb/talaria/internal/tlsx"
 )
 
 const stagingURL = "https://acme-staging-v02.api.letsencrypt.org/directory"

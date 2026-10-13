@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 func (s *Store) CreateSession(ctx context.Context, sess *model.Session) error {

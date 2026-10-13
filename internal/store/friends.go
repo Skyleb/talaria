@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 func pairKey(a, b string) string {

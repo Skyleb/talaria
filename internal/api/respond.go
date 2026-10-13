@@ -7,16 +7,16 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/skyle/talaria/internal/auth"
-	"github.com/skyle/talaria/internal/blob"
-	"github.com/skyle/talaria/internal/config"
-	"github.com/skyle/talaria/internal/ddns"
-	"github.com/skyle/talaria/internal/gateway"
-	"github.com/skyle/talaria/internal/lanaccess"
-	"github.com/skyle/talaria/internal/landns"
-	"github.com/skyle/talaria/internal/listen"
-	"github.com/skyle/talaria/internal/push"
-	"github.com/skyle/talaria/internal/store"
+	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/blob"
+	"github.com/skyleb/talaria/internal/config"
+	"github.com/skyleb/talaria/internal/ddns"
+	"github.com/skyleb/talaria/internal/gateway"
+	"github.com/skyleb/talaria/internal/lanaccess"
+	"github.com/skyleb/talaria/internal/landns"
+	"github.com/skyleb/talaria/internal/listen"
+	"github.com/skyleb/talaria/internal/push"
+	"github.com/skyleb/talaria/internal/store"
 )
 
 type Server struct {

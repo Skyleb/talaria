@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/skyle/talaria/internal/ddns"
-	"github.com/skyle/talaria/internal/landns"
-	"github.com/skyle/talaria/internal/tlsx"
+	"github.com/skyleb/talaria/internal/ddns"
+	"github.com/skyleb/talaria/internal/landns"
+	"github.com/skyleb/talaria/internal/tlsx"
 )
 
 type Config struct {

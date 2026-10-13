@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/skyle/talaria/internal/auth"
-	"github.com/skyle/talaria/internal/web"
+	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/web"
 )
 
 // Router assembles the full HTTP surface.

@@ -10,7 +10,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 // Client is one WebSocket connection.

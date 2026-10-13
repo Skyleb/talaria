@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/skyle/talaria/internal/auth"
-	"github.com/skyle/talaria/internal/listen"
+	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/listen"
 )
 
 // Listening-together endpoints: thin wrappers over the listen service. Every

@@ -13,8 +13,8 @@ import (
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 
-	"github.com/skyle/talaria/internal/model"
-	"github.com/skyle/talaria/internal/store"
+	"github.com/skyleb/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/store"
 )
 
 type Sender struct {
@@ -57,7 +57,7 @@ func New(ctx context.Context, st *store.Store, log *slog.Logger, contact string)
 		log.Info("generated web push (VAPID) keys")
 	}
 	if contact == "" {
-		contact = "https://github.com/skyle/talaria"
+		contact = "https://github.com/skyleb/talaria"
 	}
 	return &Sender{st: st, log: log, public: pub, private: priv, contact: contact}, nil
 }

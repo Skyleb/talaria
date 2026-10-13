@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skyle/talaria/internal/ddns"
-	"github.com/skyle/talaria/internal/lanaccess"
-	"github.com/skyle/talaria/internal/landns"
+	"github.com/skyleb/talaria/internal/ddns"
+	"github.com/skyleb/talaria/internal/lanaccess"
+	"github.com/skyleb/talaria/internal/landns"
 )
 
 // configPayload is the admin-editable slice of talaria.toml, exposed over

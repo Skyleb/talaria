@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/skyle/talaria/internal/auth"
-	"github.com/skyle/talaria/internal/gateway"
-	"github.com/skyle/talaria/internal/store"
+	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/gateway"
+	"github.com/skyleb/talaria/internal/store"
 )
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {

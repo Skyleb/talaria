@@ -6,9 +6,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/skyle/talaria/internal/auth"
-	"github.com/skyle/talaria/internal/gateway"
-	"github.com/skyle/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/auth"
+	"github.com/skyleb/talaria/internal/gateway"
+	"github.com/skyleb/talaria/internal/model"
 )
 
 func nowMs() int64 { return time.Now().UnixMilli() }

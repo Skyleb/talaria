@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/skyle/talaria/internal/model"
-	"github.com/skyle/talaria/internal/store"
+	"github.com/skyleb/talaria/internal/model"
+	"github.com/skyleb/talaria/internal/store"
 )
 
 const EvtSyncState = "sync.state"

@@ -1,6 +1,6 @@
 [Unit]
 Description=Talaria chat server
-Documentation=https://github.com/OWNER/talaria
+Documentation=https://github.com/Skyleb/talaria
 After=network-online.target
 Wants=network-online.target
 

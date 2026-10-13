@@ -20,7 +20,7 @@ import (
 
 	"golang.org/x/crypto/acme"
 
-	"github.com/skyle/talaria/internal/ddns"
+	"github.com/skyleb/talaria/internal/ddns"
 )
 
 // DNS01Manager obtains and renews a Let's Encrypt certificate for one domain

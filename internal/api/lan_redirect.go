@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/skyle/talaria/internal/landns"
+	"github.com/skyleb/talaria/internal/landns"
 )
 
 // lanRedirect intercepts page loads that reach the main domain through the

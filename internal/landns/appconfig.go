@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/skyle/talaria/internal/config"
+	"github.com/skyleb/talaria/internal/config"
 )
 
 // FromAppConfig translates the TOML/admin-UI settings into a runner Config.

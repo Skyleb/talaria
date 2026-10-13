@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skyle/talaria/internal/listen"
+	"github.com/skyleb/talaria/internal/listen"
 )
 
 func main() {
