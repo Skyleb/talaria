@@ -98,7 +98,7 @@ jobs:
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
-    runs-on: [self-hosted, Windows, talaria-server]
+    runs-on: [self-hosted, Linux, talaria-server]
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -108,8 +108,12 @@ jobs:
           name: talaria-binaries
           path: out
       - name: Install and restart the Talaria service
-        shell: powershell
         run: |
-          $ErrorActionPreference = 'Stop'
-          & C:\Talaria\deploy.ps1 -Binary (Resolve-Path out\talaria-windows-amd64.exe)
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64)  BIN=out/talaria-linux-amd64 ;;
+            aarch64) BIN=out/talaria-linux-arm64 ;;
+            *) echo "unsupported arch $(uname -m)"; exit 1 ;;
+          esac
+          chmod +x "$BIN"
+          sudo /opt/talaria/deploy.sh "$BIN"
