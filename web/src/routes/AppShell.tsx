@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { Hash, Menu, Moon, Phone, PhoneOff, Plus, Settings, Sun, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
-import { api } from '../lib/api'
+import { Hash, Menu, Moon, Phone, PhoneOff, Plus, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
+import { api, uploadFile } from '../lib/api'
 import { dmOther, dmTitle, displayName, useApp } from '../store'
 import { useCall } from '../call'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
+import { GlobalCall } from '../components/call/CallPanel'
 import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
 import FriendsPage from './FriendsPage'
 import ChatPage from './ChatPage'
@@ -54,6 +55,7 @@ export default function AppShell() {
           <Route path="*" element={<Navigate to="friends" replace />} />
         </Routes>
       </main>
+      <GlobalCall />
     </div>
   )
 }
@@ -250,6 +252,7 @@ function GroupChannelList({ groupId }: { groupId: string }) {
   const navigate = useNavigate()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [channelOpen, setChannelOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   if (!group) return <div className="flex-1" />
   const myRole = members?.find((m) => m.user_id === me?.id)?.role
@@ -257,15 +260,24 @@ function GroupChannelList({ groupId }: { groupId: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-edge px-4 py-3">
-        <h2 className="truncate font-semibold text-ink">{group.name}</h2>
+      <div className="flex items-center justify-between gap-1 border-b border-edge px-4 py-3">
+        <h2 className="min-w-0 flex-1 truncate font-semibold text-ink">{group.name}</h2>
         <button
           title="Invite people"
-          className="text-ink-1 hover:text-ink"
+          className="rounded-lg p-1 text-ink-1 hover:bg-bg-3 hover:text-ink"
           onClick={() => setInviteOpen(true)}
         >
           <UserPlus size={18} />
         </button>
+        {canManage && (
+          <button
+            title="Group settings"
+            className="rounded-lg p-1 text-ink-1 hover:bg-bg-3 hover:text-ink"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings size={18} />
+          </button>
+        )}
       </div>
       <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {(channelIds ?? []).map((cid) => {
@@ -304,7 +316,132 @@ function GroupChannelList({ groupId }: { groupId: string }) {
       </div>
       <InviteModal open={inviteOpen} onClose={() => setInviteOpen(false)} groupId={groupId} />
       <CreateChannelModal open={channelOpen} onClose={() => setChannelOpen(false)} groupId={groupId} />
+      <GroupSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        groupId={groupId}
+        isOwner={myRole === 'owner'}
+      />
     </>
+  )
+}
+
+// GroupSettingsModal: rename, change the icon, and (owner only) delete.
+function GroupSettingsModal({
+  open,
+  onClose,
+  groupId,
+  isOwner,
+}: {
+  open: boolean
+  onClose: () => void
+  groupId: string
+  isOwner: boolean
+}) {
+  const group = useApp((s) => s.groups[groupId])
+  const navigate = useNavigate()
+  const [name, setName] = useState('')
+  const [msg, setMsg] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setName(group?.name ?? '')
+      setMsg('')
+      setError('')
+    }
+  }, [open, group?.name])
+
+  if (!group) return null
+
+  async function patch(body: Record<string, unknown>, okMsg: string) {
+    setBusy(true)
+    setError('')
+    setMsg('')
+    try {
+      await api.patch(`/api/v1/groups/${groupId}`, body)
+      setMsg(okMsg)
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not save')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function changeIcon(file: File) {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await uploadFile(file)
+      await patch({ icon_file_id: res.attachment.file_id }, 'Icon updated.')
+    } catch (e: any) {
+      setError(e?.message ?? 'Icon upload failed')
+      setBusy(false)
+    }
+  }
+
+  async function deleteGroup() {
+    if (!confirm(`Delete "${group.name}" for everyone? All its messages are lost. This cannot be undone.`)) return
+    try {
+      await api.del(`/api/v1/groups/${groupId}`)
+      onClose()
+      navigate('/app/friends')
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not delete group')
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Group settings">
+      <div className="space-y-5">
+        <div className="flex items-center gap-4">
+          {group.icon_file_id ? (
+            <img src={`/avatars/${group.icon_file_id}?s=96`} alt="" className="h-14 w-14 rounded-2xl object-cover" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-bg-3 text-lg font-bold text-ink-1">
+              {group.name.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <label className="cursor-pointer rounded-lg bg-bg-2 px-3 py-1.5 text-sm text-ink hover:bg-bg-3">
+            Change icon
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              hidden
+              onChange={(e) => e.target.files?.[0] && changeIcon(e.target.files[0])}
+            />
+          </label>
+        </div>
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            patch({ name }, 'Saved.')
+          }}
+        >
+          <div>
+            <Label>Group name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} required />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={busy}>Save</Button>
+            {msg && <span className="text-sm text-success">{msg}</span>}
+          </div>
+        </form>
+        <ErrorText>{error}</ErrorText>
+        {isOwner && (
+          <div className="border-t border-edge pt-4">
+            <Button variant="danger" className="w-full" onClick={deleteGroup}>
+              <Trash2 size={16} /> Delete this group
+            </Button>
+            <p className="mt-1.5 text-center text-xs text-ink-2">
+              Removes the group and its messages for everyone.
+            </p>
+          </div>
+        )}
+      </div>
+    </Modal>
   )
 }
 

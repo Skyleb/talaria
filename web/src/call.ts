@@ -27,6 +27,8 @@ interface CallState {
   muted: boolean
   cameraOn: boolean
   sharing: boolean
+  // minimized collapses the call UI to a floating pill so you can browse.
+  minimized: boolean
   mediaError: string
   calls: Record<string, CallParticipant[]> // channelId -> live participants
   remoteFeeds: RemoteFeed[]
@@ -39,6 +41,7 @@ interface CallState {
   toggleMute: () => void
   toggleCamera: () => Promise<void>
   toggleScreen: () => Promise<void>
+  setMinimized: (v: boolean) => void
   dismissRing: () => void
 }
 
@@ -229,6 +232,7 @@ export const useCall = create<CallState>((set, get) => ({
   muted: false,
   cameraOn: false,
   sharing: false,
+  minimized: false,
   mediaError: '',
   calls: {},
   remoteFeeds: [],
@@ -244,7 +248,7 @@ export const useCall = create<CallState>((set, get) => ({
     channelId = chId
     set({
       joinedChannelId: chId, connecting: true, connected: false,
-      muted: false, cameraOn: false, sharing: false, mediaError: '',
+      muted: false, cameraOn: false, sharing: false, minimized: false, mediaError: '',
       remoteFeeds: [], ring: st.ring?.channelId === chId ? null : st.ring,
     })
     sendCommand('call.join', { channel_id: chId })
@@ -274,10 +278,12 @@ export const useCall = create<CallState>((set, get) => ({
     cleanupConnections()
     set({
       joinedChannelId: null, connecting: false, connected: false,
-      muted: false, cameraOn: false, sharing: false,
+      muted: false, cameraOn: false, sharing: false, minimized: false,
       remoteFeeds: [], localCamStream: null, localScreenStream: null,
     })
   },
+
+  setMinimized: (v) => set({ minimized: v }),
 
   toggleMute: () => {
     const next = !get().muted

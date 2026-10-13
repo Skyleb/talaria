@@ -115,7 +115,12 @@ export default function FriendsPage({ onMenu }: { onMenu: () => void }) {
             </p>
           )}
           {accepted.map((f) => (
-            <Row key={f.friendship.id} userId={f.user_id} online={!!online[f.user_id]}>
+            <Row
+              key={f.friendship.id}
+              userId={f.user_id}
+              online={!!online[f.user_id]}
+              onClick={() => openDM(f.user_id)}
+            >
               <ActionBtn title="Message" onClick={() => openDM(f.user_id)}>
                 <MessageCircle size={18} />
               </ActionBtn>
@@ -166,16 +171,25 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({
   userId,
   online,
+  onClick,
   children,
 }: {
   userId: string
   online?: boolean
+  onClick?: () => void
   children?: React.ReactNode
 }) {
   const users = useApp((s) => s.users)
   const u = users[userId]
   return (
-    <div className="flex max-w-md items-center gap-3 rounded-lg px-2 py-2 hover:bg-bg-3/60">
+    <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      className={cx(
+        'flex max-w-md items-center gap-3 rounded-xl px-2 py-2 hover:bg-bg-3/60',
+        onClick && 'cursor-pointer',
+      )}
+    >
       <Avatar user={u} size={36} online={online} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-ink">{displayName(users, userId)}</div>
@@ -183,7 +197,10 @@ function Row({
           {u?.status_text || (u ? `@${u.username}` : '')}
         </div>
       </div>
-      <div className="flex gap-1">{children}</div>
+      {/* Action buttons act on their own; keep the row click out of them. */}
+      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
     </div>
   )
 }

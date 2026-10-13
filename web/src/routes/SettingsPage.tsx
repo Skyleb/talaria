@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Moon, Monitor, Sun } from 'lucide-react'
+import { Link2, Moon, Monitor, Sun } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
 import { PALETTES } from '../lib/palettes'
@@ -289,11 +289,24 @@ function AdminSection() {
         )}
         <div className="mt-3 space-y-1">
           {invites.filter((i) => !i.revoked_at).map((i) => (
-            <div key={i.code} className="flex items-center gap-2 rounded bg-bg-2 px-3 py-1.5 text-sm">
+            <div
+              key={i.code}
+              className={cx(
+                'flex items-center gap-2 rounded-lg bg-bg-2 px-3 py-1.5 text-sm',
+                newInviteCode === i.code && 'ring-1 ring-accent/50',
+              )}
+            >
               <code className="text-ink">{i.code}</code>
               <span className="text-xs text-ink-2">used {i.use_count}{i.max_uses ? `/${i.max_uses}` : ''}</span>
               <button
-                className="ml-auto text-xs text-danger hover:underline"
+                className="ml-auto flex items-center gap-1 text-xs text-accent hover:underline"
+                title="Show the shareable link for this code"
+                onClick={() => setNewInviteCode(i.code)}
+              >
+                <Link2 size={13} /> Get link
+              </button>
+              <button
+                className="text-xs text-danger hover:underline"
                 onClick={() => api.del(`/api/v1/admin/invites/${i.code}`).then(load)}
               >
                 Revoke

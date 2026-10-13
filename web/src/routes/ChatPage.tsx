@@ -50,7 +50,7 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <PageHeader
           onMenu={onMenu}
           icon={isDM ? undefined : <Hash size={18} />}
@@ -145,15 +145,20 @@ function MemberPanel({ groupId, open, onClose }: { groupId: string; open: boolea
       {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} />}
       <aside
         className={cx(
-          'fixed inset-y-0 right-0 z-40 w-60 translate-x-full bg-bg-1 border-l border-edge transition-transform',
+          'fixed inset-y-0 right-0 z-40 flex w-60 translate-x-full flex-col bg-bg-1 border-l border-edge transition-transform',
           open && 'translate-x-0',
-          'lg:static lg:z-auto', open ? 'lg:block' : 'lg:hidden',
+          'lg:static lg:z-auto', open ? 'lg:flex' : 'lg:hidden',
         )}
       >
-        <div className="border-b border-edge px-4 py-3 text-sm font-semibold text-ink">
+        <div className="shrink-0 border-b border-edge px-4 py-3 text-sm font-semibold text-ink">
           Members — {members.length}
         </div>
-        <div className="space-y-0.5 overflow-y-auto p-2">
+        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
+          {sorted.length === 0 && (
+            <p className="px-2 py-1 text-xs text-ink-2">
+              No members to show — try reloading the page.
+            </p>
+          )}
           {sorted.map((m) => {
             const u = users[m.user_id]
             return (
