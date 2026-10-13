@@ -72,7 +72,7 @@ jobs:
           (cd out && sha256sum * > SHA256SUMS.txt)
           ls -la out
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: talaria-binaries
           path: out/
@@ -84,7 +84,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: talaria-binaries
           path: out
@@ -103,7 +103,7 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: talaria-binaries
           path: out
