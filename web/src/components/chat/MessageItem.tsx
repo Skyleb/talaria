@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CornerUpLeft, Pencil, Trash2 } from 'lucide-react'
+import { CornerUpLeft, Pencil, SmilePlus, Trash2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { renderMarkdown } from '../../lib/markdown'
 import { formatTime, formatDateTime } from '../../lib/time'
@@ -8,6 +8,7 @@ import { Avatar } from '../Avatar'
 import { Button, cx } from '../ui'
 import { AttachmentView } from './AttachmentView'
 import { Lightbox } from './Lightbox'
+import { ReactionPicker } from './ReactionPicker'
 import type { Message } from '../../lib/types'
 
 // A lone https link to an image file (what the GIF picker sends) renders as
@@ -32,6 +33,8 @@ export function MessageItem({
   const [editText, setEditText] = useState('')
   const [actionsOpen, setActionsOpen] = useState(false)
   const [lightbox, setLightbox] = useState(false)
+  const [picker, setPicker] = useState<'hover' | 'sheet' | null>(null)
+  const jumpToMessage = useApp((s) => s.jumpToMessage)
 
   const author = users[m.author_id] ?? m.author
   const mine = m.author_id === me?.id
@@ -57,6 +60,21 @@ export function MessageItem({
   async function remove() {
     if (!confirm('Delete this message?')) return
     await api.del(`/api/v1/messages/${m.id}`).catch(() => {})
+  }
+
+  // toggleReaction adds my reaction, or withdraws it if I already reacted.
+  async function toggleReaction(emoji: string) {
+    setPicker(null)
+    setActionsOpen(false)
+    if (!me) return
+    const mine = (m.reactions ?? []).some((r) => r.emoji === emoji && r.user_ids.includes(me.id))
+    const path = `/api/v1/messages/${m.id}/reactions/${encodeURIComponent(emoji)}`
+    await (mine ? api.del(path) : api.put(path, {})).catch(() => {})
+  }
+
+  function reactionTitle(userIds: string[]): string {
+    const names = userIds.map((id) => (id === me?.id ? 'You' : displayName(users, id)))
+    return names.join(', ')
   }
 
   // System lines ("X added Y") render as a quiet divider, not a bubble.
@@ -86,11 +104,15 @@ export function MessageItem({
       }}
     >
       {m.reply_to && (
-        <div className="mb-0.5 ml-10 flex items-center gap-1 truncate text-xs text-ink-2">
-          <CornerUpLeft size={12} />
+        <button
+          onClick={() => jumpToMessage(m.channel_id, m.reply_to!.id)}
+          title="Jump to the original message"
+          className="mb-0.5 ml-10 flex max-w-full items-center gap-1 truncate rounded text-left text-xs text-ink-2 hover:text-ink"
+        >
+          <CornerUpLeft size={12} className="shrink-0" />
           <span className="font-medium">{m.reply_to.author ? m.reply_to.author.display_name : displayName(users, m.reply_to.author_id)}</span>
           <span className="truncate">{m.reply_to.deleted_at ? 'deleted message' : m.reply_to.content}</span>
-        </div>
+        </button>
       )}
       <div className="flex gap-2.5">
         <div className="w-9 shrink-0 pt-0.5">
@@ -156,6 +178,39 @@ export function MessageItem({
               {(m.attachments ?? []).map((a) => (
                 <AttachmentView key={a.id} attachment={a} />
               ))}
+              {(m.reactions ?? []).length > 0 && (
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  {m.reactions!.map((r) => {
+                    const mine = !!me && r.user_ids.includes(me.id)
+                    return (
+                      <button
+                        key={r.emoji}
+                        onClick={() => toggleReaction(r.emoji)}
+                        title={reactionTitle(r.user_ids)}
+                        className={cx(
+                          'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs leading-none',
+                          mine ? 'border-accent bg-accent/15 text-ink' : 'border-edge bg-bg-2 text-ink-1 hover:bg-bg-3',
+                        )}
+                      >
+                        <span className="text-sm leading-none">{r.emoji}</span>
+                        <span className="tabular-nums">{r.count}</span>
+                      </button>
+                    )
+                  })}
+                  {!m.deleted_at && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setPicker(picker === 'hover' ? null : 'hover')}
+                        title="Add a reaction"
+                        className="flex items-center rounded-full border border-dashed border-edge px-1.5 py-0.5 text-ink-2 hover:text-ink"
+                      >
+                        <SmilePlus size={13} />
+                      </button>
+                      {picker === 'hover' && <ReactionPicker className="left-0 top-7" onPick={toggleReaction} onClose={() => setPicker(null)} />}
+                    </div>
+                  )}
+                </div>
+              )}
               {m.failed && <p className="text-xs text-danger">Failed to send.</p>}
             </>
           )}
@@ -164,7 +219,15 @@ export function MessageItem({
 
       {/* Hover actions (desktop) */}
       {!m.deleted_at && !editing && !m.pending && (
-        <div className="absolute -top-3 right-2 hidden gap-0.5 rounded-lg border border-edge bg-bg-1 p-0.5 shadow group-hover:flex">
+        <div className={cx('absolute -top-3 right-2 gap-0.5 rounded-lg border border-edge bg-bg-1 p-0.5 shadow group-hover:flex', picker === 'hover' && (m.reactions ?? []).length === 0 ? 'flex' : 'hidden')}>
+          <div className="relative">
+            <IconBtn title="React" onClick={() => setPicker(picker === 'hover' ? null : 'hover')}>
+              <SmilePlus size={14} />
+            </IconBtn>
+            {picker === 'hover' && (m.reactions ?? []).length === 0 && (
+              <ReactionPicker className="right-0 top-8" onPick={toggleReaction} onClose={() => setPicker(null)} />
+            )}
+          </div>
           <IconBtn title="Reply" onClick={() => onReply(m)}>
             <CornerUpLeft size={14} />
           </IconBtn>
@@ -189,8 +252,15 @@ export function MessageItem({
 
       {/* Long-press / right-click sheet (mobile) */}
       {actionsOpen && !m.deleted_at && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 pb-[env(safe-area-inset-bottom)] sm:hidden" onClick={() => setActionsOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 pb-[env(safe-area-inset-bottom)] sm:hidden" onClick={() => { setActionsOpen(false); setPicker(null) }}>
           <div className="w-full rounded-t-2xl bg-bg-1 p-3" onClick={(e) => e.stopPropagation()}>
+            {picker === 'sheet' ? (
+              <ReactionPicker inline onPick={toggleReaction} onClose={() => setPicker(null)} />
+            ) : (
+              <SheetBtn onClick={() => setPicker('sheet')}>
+                <SmilePlus size={16} /> React
+              </SheetBtn>
+            )}
             <SheetBtn
               onClick={() => {
                 setActionsOpen(false)

@@ -105,6 +105,10 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 			m.ReplyTo = &cp
 		}
 	}
+	if err := s.Store.HydrateReactions(r.Context(), msgs); err != nil {
+		serverError(w, s.Log, err)
+		return
+	}
 	writeJSON(w, 200, map[string]any{"messages": msgs, "has_more": hasMore, "has_more_after": hasMoreAfter})
 }
 
@@ -208,6 +212,7 @@ func (s *Server) handleEditMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	updated, _ := s.Store.MessageByID(r.Context(), m.ID)
+	_ = s.Store.HydrateReactions(r.Context(), []*model.Message{updated})
 	pub := me.Public()
 	updated.Author = &pub
 	s.Hub.PublishToChannel(r.Context(), ch, gateway.EvtMessageUpdate, map[string]any{"message": updated})

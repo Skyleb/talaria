@@ -228,12 +228,25 @@ function handleEvent(t: string, d: any) {
         return {
           messages: {
             ...s.messages,
-            [m.channel_id]: list.map((x) => (x.id === m.id ? { ...m, reply_to: x.reply_to } : x)),
+            [m.channel_id]: list.map((x) => (x.id === m.id ? { ...m, reply_to: x.reply_to, reactions: m.reactions ?? x.reactions } : x)),
           },
         }
       })
       break
     }
+
+    case 'message.reaction':
+      useApp.setState((s) => {
+        const list = s.messages[d.channel_id]
+        if (!list) return {}
+        return {
+          messages: {
+            ...s.messages,
+            [d.channel_id]: list.map((x) => (x.id === d.message_id ? { ...x, reactions: d.reactions ?? [] } : x)),
+          },
+        }
+      })
+      break
 
     case 'message.delete':
       useApp.setState((s) => {

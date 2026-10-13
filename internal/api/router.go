@@ -59,6 +59,8 @@ func (s *Server) Router() http.Handler {
 	authed.HandleFunc("PUT /api/v1/channels/{id}/read", s.handleReadUpdate)
 	authed.HandleFunc("PATCH /api/v1/messages/{id}", s.handleEditMessage)
 	authed.HandleFunc("DELETE /api/v1/messages/{id}", s.handleDeleteMessage)
+	authed.HandleFunc("PUT /api/v1/messages/{id}/reactions/{emoji}", s.handleAddReaction)
+	authed.HandleFunc("DELETE /api/v1/messages/{id}/reactions/{emoji}", s.handleRemoveReaction)
 
 	authed.HandleFunc("POST /api/v1/dms", s.handleOpenDM)
 	authed.HandleFunc("GET /api/v1/channels/{id}/listen", s.handleListenState)

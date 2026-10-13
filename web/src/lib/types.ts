@@ -96,10 +96,17 @@ export interface Message {
   author?: User
   attachments?: Attachment[]
   reply_to?: Message
+  reactions?: Reaction[]
   nonce?: string
   // Client-only: set while an optimistic send is in flight / failed.
   pending?: boolean
   failed?: boolean
+}
+
+export interface Reaction {
+  emoji: string
+  count: number
+  user_ids: string[]
 }
 
 export interface ReadState {

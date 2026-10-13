@@ -117,8 +117,16 @@ type Message struct {
 	Author      *PublicUser  `json:"author,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 	ReplyTo     *Message     `json:"reply_to,omitempty"`
+	Reactions   []Reaction   `json:"reactions,omitempty"`
 	// Nonce echoes the client-supplied idempotency key on create (not stored).
 	Nonce string `json:"nonce,omitempty"`
+}
+
+// Reaction is one emoji on a message with everyone who used it.
+type Reaction struct {
+	Emoji   string   `json:"emoji"`
+	Count   int      `json:"count"`
+	UserIDs []string `json:"user_ids"`
 }
 
 type File struct {
