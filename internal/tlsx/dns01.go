@@ -104,35 +104,42 @@ func (m *DNS01Manager) setErr(err error) {
 	}
 }
 
+// retryAfterFailure is how soon a failed issuance is retried (a brand-new
+// domain's delegation or a DNS hiccup should not cost half a day).
+const retryAfterFailure = 5 * time.Minute
+
 func (m *DNS01Manager) maintain(ctx context.Context) {
-	m.ensure(ctx)
-	t := time.NewTicker(12 * time.Hour)
-	defer t.Stop()
 	for {
+		delay := 12 * time.Hour
+		if !m.ensure(ctx) {
+			delay = retryAfterFailure
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
-			m.ensure(ctx)
+		case <-time.After(delay):
 		}
 	}
 }
 
-func (m *DNS01Manager) ensure(ctx context.Context) {
+// ensure obtains or renews the certificate when needed and reports whether
+// a usable certificate is in place afterwards.
+func (m *DNS01Manager) ensure(ctx context.Context) bool {
 	if c := m.cert.Load(); c != nil && c.Leaf != nil && time.Until(c.Leaf.NotAfter) > renewBefore {
-		return
+		return true
 	}
 	obtainCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
 	defer cancel()
 	if err := m.obtain(obtainCtx); err != nil {
 		m.setErr(err)
 		m.log.Error("lan cert issuance failed", "domain", m.domain, "err", err)
-	} else {
-		m.setErr(nil)
-		if c := m.cert.Load(); c != nil && c.Leaf != nil {
-			m.log.Info("lan cert issued", "domain", m.domain, "expires", c.Leaf.NotAfter.Format(time.RFC3339))
-		}
+		return m.cert.Load() != nil
 	}
+	m.setErr(nil)
+	if c := m.cert.Load(); c != nil && c.Leaf != nil {
+		m.log.Info("lan cert issued", "domain", m.domain, "expires", c.Leaf.NotAfter.Format(time.RFC3339))
+	}
+	return true
 }
 
 func (m *DNS01Manager) loadCached() {
@@ -258,21 +265,12 @@ func (m *DNS01Manager) obtain(ctx context.Context) error {
 
 // waitForTXT polls the authoritative nameservers of domain's zone until all
 // of them return want for _acme-challenge.<domain>, giving up (but not
-// failing) after two minutes. When the nameservers can't be discovered it
-// falls back to a short fixed pause. Only ctx cancellation is an error.
+// failing) after two minutes. It does fail when the zone has no reachable
+// nameservers at all: validation could only produce NXDOMAIN, so better to
+// report the real problem (usually a freshly registered domain whose
+// delegation hasn't reached the registry yet).
 func waitForTXT(ctx context.Context, domain, want string, log *slog.Logger) error {
 	name := "_acme-challenge." + domain
-	var servers []string
-	if zone, _, err := ddns.SplitZone(domain); err == nil {
-		lookupCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		nss, err := net.DefaultResolver.LookupNS(lookupCtx, zone)
-		cancel()
-		if err == nil {
-			for _, ns := range nss {
-				servers = append(servers, strings.TrimSuffix(ns.Host, "."))
-			}
-		}
-	}
 	pause := func(d time.Duration) error {
 		select {
 		case <-time.After(d):
@@ -281,10 +279,30 @@ func waitForTXT(ctx context.Context, domain, want string, log *slog.Logger) erro
 			return ctx.Err()
 		}
 	}
-	if len(servers) == 0 {
-		return pause(10 * time.Second)
+	zone, _, err := ddns.SplitZone(domain)
+	if err != nil {
+		return err
 	}
 	deadline := time.Now().Add(2 * time.Minute)
+	var servers []string
+	for len(servers) == 0 {
+		lookupCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		nss, lookupErr := net.DefaultResolver.LookupNS(lookupCtx, zone)
+		cancel()
+		for _, ns := range nss {
+			servers = append(servers, strings.TrimSuffix(ns.Host, "."))
+		}
+		if len(servers) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("no nameservers found for %s (%v); if the domain was just registered, "+
+				"the registry can take up to an hour to publish it — will retry", zone, lookupErr)
+		}
+		if err := pause(15 * time.Second); err != nil {
+			return err
+		}
+	}
 	for {
 		if txtServedBy(ctx, servers, name, want) {
 			return nil
