@@ -14,6 +14,7 @@ interface AppState {
   authChecked: boolean
   ready: boolean
   gatewayStatus: GatewayStatus
+  gatewayOfflineSince: number | null
   clockOffsetMs: number
 
   users: Record<string, User>
@@ -81,6 +82,7 @@ export const useApp = create<AppState>((set, get) => ({
   authChecked: false,
   ready: false,
   gatewayStatus: 'connecting',
+  gatewayOfflineSince: null,
   clockOffsetMs: 0,
 
   users: {},
@@ -131,7 +133,13 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   setMe: (u) => set({ me: u, authChecked: true }),
-  setGatewayStatus: (s) => set({ gatewayStatus: s }),
+  setGatewayStatus: (s) =>
+    set((st) => ({
+      gatewayStatus: s,
+      // Remember when we lost the connection so the UI can stay calm for a
+      // short blip and only escalate when reconnecting keeps failing.
+      gatewayOfflineSince: s === 'online' ? null : (st.gatewayOfflineSince ?? Date.now()),
+    })),
 
   applyReady: (p) => {
     const users = { ...p.users }

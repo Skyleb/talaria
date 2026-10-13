@@ -1,7 +1,7 @@
 // Gateway: the single WebSocket connection with resume, heartbeat/clock-offset
 // estimation (groundwork for Phase 4 synced playback), and store dispatch.
 import { registerReadSender, useApp } from './store'
-import { handleCallEvent, setActiveCalls, useCall } from './call'
+import { handleCallEvent, resyncCall, setActiveCalls, useCall } from './call'
 import { handleListenEvent, setActiveListening } from './listen'
 import type {
   Channel, FriendEntry, Friendship, Group, GroupMember, GroupSummary,
@@ -143,6 +143,8 @@ function handleFrame(f: Frame) {
     }
     case 'resumed':
       useApp.getState().setGatewayStatus('online')
+      // The socket is back; make sure the server still has our call seat.
+      resyncCall()
       break
     case 'reset':
       // Our resume failed: adopt the new session; a `ready` event follows.
@@ -187,6 +189,8 @@ function handleEvent(t: string, d: any) {
       st.setGatewayStatus('online')
       setActiveCalls(d.active_calls ?? [])
       setActiveListening(d.active_listening ?? [])
+      // A fresh session after a failed resume: re-assert the call seat too.
+      resyncCall()
       break
 
     case 'message.create': {

@@ -86,11 +86,7 @@ export default function AppShell() {
       )}
 
       <main className="flex min-w-0 flex-1 flex-col">
-        {gatewayStatus !== 'online' && ready && (
-          <div className="bg-danger/90 px-3 py-1 text-center text-xs font-medium text-white">
-            {gatewayStatus === 'connecting' ? 'Reconnecting…' : 'Offline — trying to reconnect'}
-          </div>
-        )}
+        {gatewayStatus !== 'online' && ready && <GatewayBanner />}
         <RingToast />
         <Routes location={bgRef.current}>
           <Route index element={<Navigate to="friends" replace />} />
@@ -806,3 +802,32 @@ export function PageHeader({
 }
 
 export { X }
+
+// GatewayBanner: a quiet "not live right now" strip while the connection is
+// re-established. It only starts to look like a problem when reconnecting
+// keeps failing: amber after 20 s, red after two minutes.
+function GatewayBanner() {
+  const since = useApp((s) => s.gatewayOfflineSince)
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const secs = since ? Math.floor((Date.now() - since) / 1000) : 0
+  const level = secs >= 120 ? 'bad' : secs >= 20 ? 'slow' : 'brief'
+  return (
+    <div
+      className={cx(
+        'flex items-center justify-center gap-2 px-3 py-1 text-center text-xs',
+        level === 'brief' && 'bg-bg-2 text-ink-2',
+        level === 'slow' && 'bg-warning/15 text-warning',
+        level === 'bad' && 'bg-danger/90 font-medium text-white',
+      )}
+    >
+      {level !== 'bad' && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
+      {level === 'brief' && 'Reconnecting… messages may be a moment behind'}
+      {level === 'slow' && `Still reconnecting (${secs}s) — the app is not up to date`}
+      {level === 'bad' && 'Cannot reach the server — check your connection'}
+    </div>
+  )
+}

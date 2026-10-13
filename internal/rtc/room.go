@@ -117,17 +117,72 @@ func (r *Room) join(userID string) (*Peer, error) {
 		prefs:        map[string]subPref{},
 		hyst:         map[string]*hystState{},
 	}
+	if err := r.attachPCs(p); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	r.peers[userID] = p
+	r.mu.Unlock()
+	return p, nil
+}
 
+// rejoin gives an existing participant fresh PeerConnections (their old ones
+// died with a network change) without them ever leaving the call: membership,
+// listening seat and preferences all survive. A no-op when both PCs are
+// healthy, so a reconnecting client can call it freely.
+func (r *Room) rejoin(p *Peer) error {
+	r.mu.Lock()
+	if p.closed {
+		r.mu.Unlock()
+		return nil
+	}
+	healthy := p.pub.ConnectionState() == webrtc.PeerConnectionStateConnected &&
+		p.sub.ConnectionState() == webrtc.PeerConnectionStateConnected
+	if healthy {
+		r.mu.Unlock()
+		return nil
+	}
+	oldPub, oldSub := p.pub, p.sub
+	// Forget everything bound to the old PCs; the readers of the old uplink
+	// tracks end when the PC closes and remove the published tracks.
+	for _, dt := range p.downtracks {
+		dt.pt.removeSub(dt)
+	}
+	p.downtracks = map[string]*downtrack{}
+	p.audioSenders = map[string]*webrtc.RTPSender{}
+	p.pubPending, p.subPending = nil, nil
+	p.subDirty = false
+	p.lastLayers = ""
+	p.videoSince = time.Time{}
+	p.hyst = map[string]*hystState{}
+	err := r.attachPCs(p)
+	r.mu.Unlock()
+	oldPub.Close()
+	oldSub.Close()
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.syncLocked()
+	r.mu.Unlock()
+	return nil
+}
+
+// attachPCs creates the publisher and subscriber PCs for p and wires their
+// callbacks. Callbacks compare against the peer's *current* PCs so a PC that
+// was deliberately replaced cannot end the call when it closes.
+func (r *Room) attachPCs(p *Peer) error {
 	pub, err := r.mgr.eng.pubAPI.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	sub, bwe, err := r.mgr.eng.newSubPC()
 	if err != nil {
 		pub.Close()
-		return nil, err
+		return err
 	}
 	p.pub, p.sub, p.bwe = pub, sub, bwe
+	userID := p.userID
 	if bwe != nil {
 		// Re-pick layers soon after the viewer's estimate moves (debounced;
 		// the ticker also re-allocates every second).
@@ -167,21 +222,27 @@ func (r *Room) join(userID string) (*Peer, error) {
 		r.addPublished(p, remote)
 	})
 
-	// Either PC failing means the participant is gone (tab closed, network died).
-	// Leave runs on its own goroutine: it closes the PCs, which must not happen
-	// from inside their own state callback.
-	onState := func(s webrtc.PeerConnectionState) {
-		if s == webrtc.PeerConnectionStateFailed || s == webrtc.PeerConnectionStateClosed {
-			go r.mgr.Leave(p.userID)
+	// A current PC failing or closing means the participant is gone (tab
+	// closed, network died). A replaced PC closing is expected and ignored.
+	// Leave runs on its own goroutine: it closes the PCs, which must not
+	// happen from inside their own state callback.
+	watch := func(pc *webrtc.PeerConnection, isPub bool) func(webrtc.PeerConnectionState) {
+		return func(s webrtc.PeerConnectionState) {
+			if s != webrtc.PeerConnectionStateFailed && s != webrtc.PeerConnectionStateClosed {
+				return
+			}
+			r.mu.Lock()
+			current := (isPub && p.pub == pc) || (!isPub && p.sub == pc)
+			closed := p.closed
+			r.mu.Unlock()
+			if current && !closed {
+				go r.mgr.Leave(p.userID)
+			}
 		}
 	}
-	pub.OnConnectionStateChange(onState)
-	sub.OnConnectionStateChange(onState)
-
-	r.mu.Lock()
-	r.peers[userID] = p
-	r.mu.Unlock()
-	return p, nil
+	pub.OnConnectionStateChange(watch(pub, true))
+	sub.OnConnectionStateChange(watch(sub, false))
+	return nil
 }
 
 // addPublished registers an uplink track (or one simulcast layer of one)

@@ -207,12 +207,98 @@ function watchConnection(pc: RTCPeerConnection) {
     if (!st.joinedChannelId) return
     if (pc.connectionState === 'connected') {
       useCall.setState({ connected: true, connecting: false })
+      reconnectAttempts = 0
     } else if (pc.connectionState === 'failed') {
-      st.leave()
-      useCall.setState({ mediaError: 'Call connection failed — check that UDP port 50000 is reachable.' })
+      // Never hang up on the user for a network hiccup: rebuild the media
+      // connections and keep the seat.
+      reconnect('media connection failed')
     }
   }
 }
+
+// --- reconnection ---------------------------------------------------------
+// The only things that end a call are hanging up or joining another call.
+// Network trouble (Wi-Fi handoff, phone backgrounded, media path failure)
+// is handled by rebuilding the PeerConnections while the server keeps the
+// seat for us (it waits 30 s for a gateway reconnect, and `call.join` for a
+// call we are already in only replaces dead media connections).
+let reconnectAttempts = 0
+let reconnecting = false
+
+async function reconnect(reason: string) {
+  const st = useCall.getState()
+  if (!st.joinedChannelId || reconnecting) return
+  reconnectAttempts++
+  if (reconnectAttempts > 4) {
+    st.leave()
+    useCall.setState({ mediaError: 'Lost the call connection and could not get it back — check that UDP port 50000 is reachable.' })
+    return
+  }
+  reconnecting = true
+  console.warn('call: reconnecting —', reason)
+  useCall.setState({ connecting: true, connected: false, remoteFeeds: [], layers: {} })
+  try {
+    pubPC?.close()
+    subPC?.close()
+    pubPC = subPC = null
+    pubPendingICE = []
+    subPendingICE = []
+    pubDirty = false
+    sendCommand('call.join', { channel_id: st.joinedChannelId })
+    // Re-publish whatever we were sending.
+    const pc = ensurePubPC()
+    watchConnection(pc)
+    const prefs = usePrefs.getState()
+    if (micStream) {
+      for (const track of micStream.getTracks()) pc.addTrack(track, micStream)
+    }
+    if (st.localCamStream) {
+      for (const track of st.localCamStream.getTracks()) {
+        const tx = pc.addTransceiver(track, { direction: 'sendonly', streams: [st.localCamStream], sendEncodings: camLadder(prefs.camPreset, caps.cam, isLowPower()) })
+        preferVP8(tx)
+      }
+    }
+    if (st.localScreenStream) {
+      for (const track of st.localScreenStream.getTracks()) {
+        if (track.kind === 'video') {
+          const tx = pc.addTransceiver(track, { direction: 'sendonly', streams: [st.localScreenStream], sendEncodings: screenLadder(prefs.screenHint, caps.screen) })
+          preferVP8(tx)
+        } else {
+          pc.addTrack(track, st.localScreenStream)
+        }
+      }
+    }
+    if (micStream) applyMicParams()
+    pushState()
+  } finally {
+    reconnecting = false
+  }
+  // Decay the attempt counter so one bad minute does not count forever.
+  setTimeout(() => {
+    reconnectAttempts = Math.max(0, reconnectAttempts - 1)
+  }, 60_000)
+}
+
+// resync runs after the gateway reconnects: if the media connections are
+// still healthy, just remind the server we are here; otherwise rebuild.
+export function resyncCall() {
+  const st = useCall.getState()
+  if (!st.joinedChannelId) return
+  const healthy = (pc: RTCPeerConnection | null) => !!pc && pc.connectionState === 'connected'
+  if (healthy(pubPC) && healthy(subPC)) {
+    sendCommand('call.join', { channel_id: st.joinedChannelId })
+    pushState()
+    pushSubscribe()
+    return
+  }
+  reconnect('gateway reconnected with dead media connections')
+}
+
+// Closing the tab is a hang-up: tell the server now rather than making
+// everyone wait for the media timeout.
+window.addEventListener('pagehide', () => {
+  if (useCall.getState().joinedChannelId) sendCommand('call.leave', {})
+})
 
 // --- gateway event handlers (wired from gateway.ts) ---
 
@@ -356,7 +442,12 @@ export const useCall = create<CallState>((set, get) => ({
   join: async (chId) => {
     const st = get()
     if (st.joinedChannelId === chId) return
-    if (st.joinedChannelId) st.leave()
+    if (st.joinedChannelId) {
+      // Switching calls is the one way (besides hanging up) to leave one.
+      if (!window.confirm('Leave your current call and join this one?')) return
+      st.leave()
+    }
+    reconnectAttempts = 0
 
     channelId = chId
     set({

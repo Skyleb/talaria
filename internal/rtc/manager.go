@@ -30,6 +30,7 @@ const (
 // Publisher is the slice of the gateway hub the SFU needs (avoids an import cycle).
 type Publisher interface {
 	PublishToUsers(userIDs []string, t string, payload any)
+	IsOnline(userID string) bool
 }
 
 type Manager struct {
@@ -245,6 +246,29 @@ func (m *Manager) Join(ctx context.Context, userID, channelID string) error {
 		return store.ErrNotFound
 	}
 
+	// Already in this call (a reconnecting client re-sends call.join): keep
+	// the seat and only replace the media connections if they died.
+	m.mu.Lock()
+	cur := m.userRoom[userID]
+	m.mu.Unlock()
+	if cur != nil && cur.channel.ID == channelID {
+		cur.mu.Lock()
+		p := cur.peers[userID]
+		cur.mu.Unlock()
+		if p != nil {
+			if err := cur.rejoin(p); err != nil {
+				return err
+			}
+			cur.broadcastState()
+			cam, screen := m.camKbps, m.screenKbps
+			if cam <= 0 {
+				cam, screen = 2500, 4000
+			}
+			m.sendToUser(userID, EvtRTCCaps, map[string]any{"channel_id": channelID, "cam_kbps": cam, "screen_kbps": screen})
+			return nil
+		}
+	}
+
 	m.Leave(userID) // one call at a time
 
 	m.mu.Lock()
@@ -386,8 +410,21 @@ func (m *Manager) closeRoom(r *Room) {
 
 // OnUserOffline implements gateway.CallHandler: a user with no gateway
 // connections left is removed from their call.
+// offlineGrace is how long a caller whose gateway socket dropped keeps their
+// seat. Phones backgrounding, Wi-Fi handoffs and page reloads reconnect in
+// seconds; the media connections usually survive untouched. A dead media
+// connection removes the peer on its own (PC failed).
+const offlineGrace = 30 * time.Second
+
+// OnUserOffline implements gateway.CallHandler: a user with no gateway
+// connections left is removed from their call unless they are back soon.
 func (m *Manager) OnUserOffline(userID string) {
-	m.Leave(userID)
+	time.AfterFunc(offlineGrace, func() {
+		if m.pub.IsOnline(userID) {
+			return
+		}
+		m.Leave(userID)
+	})
 }
 
 // ActiveCallsFor returns call.state payloads for every active call the user
