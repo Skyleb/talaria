@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write # release job uploads binaries
+
+env:
+  GOFLAGS: -trimpath
+
+jobs:
+  # Build the web client once, then cross-compile the single static binary
+  # for every platform. Pure Go (modernc sqlite), so no C toolchains needed.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build web client
+        working-directory: web
+        run: |
+          npm ci
+          npx tsc -b --noEmit
+          npm run build
+
+      - name: Test
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Version string
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=main-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cross-compile
+        env:
+          CGO_ENABLED: '0'
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          build() {
+            local os=$1 arch=$2 ext=$3
+            GOOS=$os GOARCH=$arch go build -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "out/talaria-${os}-${arch}${ext}" ./cmd/talaria
+          }
+          build linux   amd64 ''
+          build linux   arm64 ''
+          build windows amd64 .exe
+          build darwin  amd64 ''
+          build darwin  arm64 ''
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: talaria-binaries
+          path: out/
+          retention-days: 14
+
+  # Tags like v0.3.0 publish a GitHub Release with every binary attached.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: talaria-binaries
+          path: out
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
+
+  # Every push to main deploys to the home server through a self-hosted
+  # runner installed there (it polls GitHub; no inbound ports needed).
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: [self-hosted, Windows, talaria-server]
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: talaria-binaries
+          path: out
+      - name: Install and restart the Talaria service
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & C:\Talaria\deploy.ps1 -Binary (Resolve-Path out\talaria-windows-amd64.exe)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

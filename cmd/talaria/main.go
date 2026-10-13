@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/skyle/talaria/internal/api"
@@ -51,11 +52,40 @@ func migrateLegacyFile(old, new string, log *slog.Logger) {
 }
 
 func main() {
+	if isWindowsService() {
+		runWindowsService(run)
+		return
+	}
+	run(signalStop())
+}
+
+// signalStop returns a channel that closes on Ctrl-C / SIGTERM.
+func signalStop() <-chan struct{} {
+	stop := make(chan struct{})
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		close(stop)
+	}()
+	return stop
+}
+
+// run starts everything and returns once stop closes (or a listener fails).
+func run(stop <-chan struct{}) {
 	configPath := flag.String("config", config.DefaultPath(), "path to talaria.toml")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	svcCmd := flag.String("service", "", "Windows service control: install | uninstall | start | stop")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("talaria", version)
+		return
+	}
+	if *svcCmd != "" {
+		if err := serviceControl(*svcCmd, *configPath); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -299,18 +329,19 @@ func main() {
 
 	printWelcome(log, st, cfg)
 
-	// First run: open the browser at the setup wizard.
-	if cfg.Server.OpenBrowser {
+	// First run: open the browser at the setup wizard (not when running as
+	// a service; there is no desktop to open it on).
+	if cfg.Server.OpenBrowser && !isWindowsService() {
 		if done, _ := st.GetSetting(context.Background(), "setup_complete"); done != "true" {
 			openBrowser(fmt.Sprintf("http://localhost:%d/setup", cfg.Server.HTTPPort))
 		}
 	}
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt)
 	select {
 	case err := <-errCh:
 		log.Error("server error", "err", err)
+		// Under the Windows SCM a non-zero exit triggers the recovery restart.
+		defer os.Exit(1)
 	case <-stop:
 		log.Info("shutting down")
 	}
