@@ -37,6 +37,8 @@ interface AppState {
   // profileUserId drives the global user profile card (open from anywhere).
   profileUserId: string | null
   mutedChannelIds: Record<string, true>
+  // overlayOpen is true while a full-screen overlay (Settings) covers the app.
+  overlayOpen: boolean
 
   // actions
   setTheme: (t: Theme) => void
@@ -90,6 +92,7 @@ export const useApp = create<AppState>((set, get) => ({
   palette: localStorage.getItem('talaria-palette') || DEFAULT_PALETTE,
   profileUserId: null,
   mutedChannelIds: {},
+  overlayOpen: false,
 
   openProfile: (userId) => set({ profileUserId: userId }),
   closeProfile: () => set({ profileUserId: null }),

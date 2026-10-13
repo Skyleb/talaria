@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"image/draw"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
+	xdraw "golang.org/x/image/draw"
 )
 
 const wing = `<g fill="#ffffff">
@@ -24,31 +26,36 @@ const wing = `<g fill="#ffffff">
 const grad = `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
   <stop offset="0" stop-color="#6457f5"/><stop offset="1" stop-color="#8d82f8"/></linearGradient></defs>`
 
-func svg(rx int, wingTransform string, bg bool) string {
+// svg composes the mark: optional gradient background (with corner radius)
+// and optional wing. Transforms are deliberately avoided; the rasterizer
+// used here drops transformed groups, so scaling is done in pixels instead.
+func svg(rx int, withBG, withWing bool) string {
 	var b strings.Builder
 	b.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">`)
 	b.WriteString(grad)
-	if bg {
+	if withBG {
 		fmt.Fprintf(&b, `<rect width="512" height="512" rx="%d" fill="url(#g)"/>`, rx)
 	}
-	if wingTransform != "" {
-		fmt.Fprintf(&b, `<g transform="%s">%s</g>`, wingTransform, wing)
-	} else {
+	if withWing {
 		b.WriteString(wing)
 	}
 	b.WriteString(`</svg>`)
 	return b.String()
 }
 
-func render(svgText string, size int, out string) error {
+func rasterize(svgText string, size int) (*image.RGBA, error) {
 	icon, err := oksvg.ReadIconStream(strings.NewReader(svgText))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	icon.SetTarget(0, 0, float64(size), float64(size))
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	scanner := rasterx.NewScannerGV(size, size, img, img.Bounds())
 	icon.Draw(rasterx.NewDasher(size, size, scanner), 1.0)
+	return img, nil
+}
+
+func save(img image.Image, out string) error {
 	f, err := os.Create(out)
 	if err != nil {
 		return err
@@ -57,23 +64,44 @@ func render(svgText string, size int, out string) error {
 	return png.Encode(f, img)
 }
 
+func render(svgText string, size int, out string) error {
+	img, err := rasterize(svgText, size)
+	if err != nil {
+		return err
+	}
+	return save(img, out)
+}
+
+// maskable draws the wing at 80% inside a full-bleed square: launchers crop
+// maskable icons to circles/squircles, so the mark must stay in the centre.
+func maskable(size int, out string) error {
+	bg, err := rasterize(svg(0, true, false), size)
+	if err != nil {
+		return err
+	}
+	wingImg, err := rasterize(svg(0, false, true), size)
+	if err != nil {
+		return err
+	}
+	inner := size * 80 / 100
+	off := (size - inner) / 2
+	dst := image.Rect(off, off, off+inner, off+inner)
+	xdraw.CatmullRom.Scale(bg, dst, wingImg, wingImg.Bounds(), draw.Over, nil)
+	return save(bg, out)
+}
+
 func main() {
 	dir := filepath.Join("web", "public", "icons")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		panic(err)
 	}
-	standard := svg(112, "", true)
-	// Maskable icons get cropped to a circle/squircle by the OS: keep the
-	// mark inside the central 80% safe zone and square off the corners.
-	maskable := svg(0, "translate(51 51) scale(0.8)", true)
-	// Status-bar badge: white mark only, transparent background.
-	badge := svg(0, "", false)
-
+	standard := svg(112, true, true)
+	badge := svg(0, false, true) // white mark, transparent background
 	must(os.WriteFile(filepath.Join(dir, "icon.svg"), []byte(standard), 0o644))
 	must(render(standard, 192, filepath.Join(dir, "icon-192.png")))
 	must(render(standard, 512, filepath.Join(dir, "icon-512.png")))
 	must(render(standard, 180, filepath.Join(dir, "apple-touch-icon.png")))
-	must(render(maskable, 512, filepath.Join(dir, "icon-maskable-512.png")))
+	must(maskable(512, filepath.Join(dir, "icon-maskable-512.png")))
 	must(render(badge, 96, filepath.Join(dir, "badge-96.png")))
 	fmt.Println("icons written to", dir)
 }

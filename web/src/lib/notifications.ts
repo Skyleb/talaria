@@ -4,7 +4,7 @@ import { api } from './api'
 
 export type PushState = 'unsupported' | 'ios-needs-install' | 'denied' | 'enabled' | 'off'
 
-function isIOS(): boolean {
+export function isIOS(): boolean {
   return /iP(hone|ad|od)/.test(navigator.userAgent)
 }
 

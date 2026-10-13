@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Bell, BellOff, Download, Link2, Moon, Monitor, Sun } from 'lucide-react'
+import { Bell, BellOff, Download, Link2, Moon, Monitor, Sun, X } from 'lucide-react'
+import { AvatarCropper } from '../components/AvatarCropper'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
 import { PALETTES } from '../lib/palettes'
@@ -14,11 +15,22 @@ import { PageHeader } from './AppShell'
 import type { Invite, LanAccessStatus, ServerConfig, SessionInfo, User } from '../lib/types'
 import { formatDateTime, formatBytes } from '../lib/time'
 
-export default function SettingsPage({ onMenu }: { onMenu: () => void }) {
+export default function SettingsPage({ onMenu, onClose }: { onMenu?: () => void; onClose?: () => void }) {
   const me = useApp((s) => s.me)
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader onMenu={onMenu} title="Settings" />
+    <div className="flex min-h-0 w-full flex-1 flex-col">
+      <PageHeader
+        onMenu={onMenu}
+        title="Settings"
+        right={
+          onClose && (
+            <button onClick={onClose} title="Close settings (Esc)" className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink">
+              <X size={20} />
+            </button>
+          )
+        }
+      />
+      {onClose && <EscToClose onClose={onClose} />}
       <div className="flex-1 space-y-8 overflow-y-auto p-4 pb-16">
         <ProfileSection />
         <NotificationsSection />
@@ -29,6 +41,17 @@ export default function SettingsPage({ onMenu }: { onMenu: () => void }) {
       </div>
     </div>
   )
+}
+
+function EscToClose({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return null
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
@@ -48,6 +71,7 @@ function ProfileSection() {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [cropFile, setCropFile] = useState<File | null>(null)
 
   async function save(extra?: Record<string, unknown>) {
     setBusy(true)
@@ -68,16 +92,11 @@ function ProfileSection() {
     }
   }
 
-  async function changeAvatar(file: File) {
-    setBusy(true)
-    setErr('')
-    try {
-      const res = await uploadFile(file)
-      await save({ avatar_file_id: res.attachment.file_id })
-    } catch (e: any) {
-      setErr(e?.message ?? 'Avatar upload failed')
-      setBusy(false)
-    }
+  async function saveAvatar(blob: Blob) {
+    const f = new File([blob], blob.type === 'image/png' ? 'avatar.png' : 'avatar.jpg', { type: blob.type })
+    const res = await uploadFile(f)
+    await save({ avatar_file_id: res.attachment.file_id })
+    setCropFile(null)
   }
 
   if (!me) return null
@@ -92,9 +111,13 @@ function ProfileSection() {
               type="file"
               accept="image/png,image/jpeg,image/gif,image/webp"
               hidden
-              onChange={(e) => e.target.files?.[0] && changeAvatar(e.target.files[0])}
+              onChange={(e) => {
+                if (e.target.files?.[0]) setCropFile(e.target.files[0])
+                e.target.value = ''
+              }}
             />
           </label>
+          <AvatarCropper file={cropFile} onCancel={() => setCropFile(null)} onDone={saveAvatar} />
           {me.avatar_file_id && (
             <Button variant="ghost" className="px-3 py-1.5 text-sm" onClick={() => save({ avatar_file_id: '' })}>
               Remove

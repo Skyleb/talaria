@@ -1,19 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
-  ChevronDown, ChevronUp, Crown, Headphones, Link as LinkIcon, ListMusic, LogOut, Pause, Play,
-  Plus, Save, Search, SkipBack, SkipForward, Trash2, Upload, Volume2, VolumeX, X, Check,
+  Check, ChevronDown, ChevronUp, Crown, Expand, Headphones, Link as LinkIcon, ListMusic, LogOut,
+  Pause, Play, Plus, Save, Search, SkipBack, SkipForward, Trash2, Upload, Video, VideoOff,
+  Volume2, VolumeX, X,
 } from 'lucide-react'
 import { api, uploadFile } from '../../lib/api'
 import { displayName, useApp } from '../../store'
 import { formatClock, positionMs, useListen } from '../../listen'
 import { Avatar } from '../Avatar'
 import { Button, cx, ErrorText, Input, Modal, Spinner } from '../ui'
-import { MediaPlayer, YouTubePlayer } from './players'
 import type { PlaylistItem, YouTubeSearchResult } from '../../lib/types'
 
 // ListenPanel sits under the channel header. It renders nothing when no one
 // is listening, a join banner when a session is running without you, and
-// the full player + queue once you are in.
+// the controls + queue once you are in. The video itself is drawn by the
+// persistent GlobalListen player, which follows the PlayerSlot below.
 export function ListenPanel({ channelId }: { channelId: string }) {
   const st = useListen((s) => s.sessions[channelId])
   const me = useApp((s) => s.me)
@@ -44,15 +45,45 @@ function JoinBanner({ channelId }: { channelId: string }) {
   )
 }
 
+// PlayerSlot reserves the space the floating player should cover and keeps
+// the store told where that space is.
+function PlayerSlot({ channelId, className, style }: { channelId: string; className?: string; style?: CSSProperties }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const setSlot = useListen((s) => s.setSlot)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      setSlot({ channelId, rect: { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) } })
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener('resize', measure)
+    // Position can change without a resize (drawers, collapsing sections).
+    const t = setInterval(measure, 250)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+      clearInterval(t)
+      setSlot(null)
+    }
+  }, [channelId, setSlot])
+  return <div ref={ref} className={cx('rounded-xl bg-black', className)} style={style} />
+}
+
 function ActivePanel({ channelId }: { channelId: string }) {
   const st = useListen((s) => s.sessions[channelId])!
   const session = st.session!
   const me = useApp((s) => s.me)!
   const users = useApp((s) => s.users)
-  const { leave, end, play, pause, seek, next, previous, select, removeItem, transferHost, reportDuration } =
+  const { leave, end, play, pause, seek, next, previous, select, removeItem, transferHost, setTheater, setAudioOnly, requestFullscreen } =
     useListen.getState()
   const volume = useListen((s) => s.volume)
   const muted = useListen((s) => s.muted)
+  const theater = useListen((s) => s.theater)
+  const audioOnly = useListen((s) => s.audioOnly)
   const setVolume = useListen((s) => s.setVolume)
   const setMuted = useListen((s) => s.setMuted)
   const [collapsed, setCollapsed] = useState(false)
@@ -72,18 +103,6 @@ function ActivePanel({ channelId }: { channelId: string }) {
     return () => clearInterval(t)
   }, [session.state])
   const pos = Math.min(positionMs(session), durationMs > 0 ? durationMs : Infinity)
-
-  // Only the host advances the queue when a track ends; everyone else just
-  // waits for the resulting state.
-  const endedFor = useRef<string | null>(null)
-  function onEnded(itemId: string) {
-    if (!isHost || endedFor.current === itemId) return
-    endedFor.current = itemId
-    next(channelId, itemId).catch(() => {})
-  }
-  useEffect(() => {
-    endedFor.current = null
-  }, [session.current_item_id])
 
   async function guard(p: Promise<unknown>) {
     setError('')
@@ -105,7 +124,7 @@ function ActivePanel({ channelId }: { channelId: string }) {
         </div>
         <Members channelId={channelId} isHost={isHost} onMakeHost={(uid) => guard(transferHost(channelId, uid))} />
         <button
-          title={collapsed ? 'Show player' : 'Hide player'}
+          title={collapsed ? 'Show player' : 'Hide player (keeps playing)'}
           onClick={() => setCollapsed((v) => !v)}
           className="rounded-lg p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
         >
@@ -121,34 +140,18 @@ function ActivePanel({ channelId }: { channelId: string }) {
       </div>
 
       {!collapsed && (
-        <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className={cx('grid gap-3 p-3', !theater && 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]')}>
           {/* Player + transport */}
-          <div className="space-y-2">
+          <div className="flex min-w-0 flex-col gap-2">
             {current ? (
-              current.kind === 'video' && current.refs?.youtube ? (
-                <YouTubePlayer
-                  key={current.id}
-                  item={current}
-                  session={session}
-                  volume={volume}
-                  muted={muted}
-                  onEnded={onEnded}
-                  onDuration={(id, ms) => reportDuration(channelId, id, ms)}
-                />
-              ) : (
-                <MediaPlayer
-                  key={current.id}
-                  item={current}
-                  session={session}
-                  volume={volume}
-                  muted={muted}
-                  onEnded={onEnded}
-                  onDuration={(id, ms) => reportDuration(channelId, id, ms)}
-                />
-              )
+              <PlayerSlot
+                channelId={channelId}
+                className={cx(audioOnly ? 'h-28' : 'aspect-video', theater && 'mx-auto')}
+                style={theater && !audioOnly ? { width: 'min(100%, calc(70vh * 16 / 9))' } : undefined}
+              />
             ) : (
               <div className="flex aspect-video items-center justify-center rounded-xl bg-bg-1 text-sm text-ink-2">
-                Add a YouTube link or upload a song to get started.
+                Add a song or video to get started.
               </div>
             )}
 
@@ -168,8 +171,8 @@ function ActivePanel({ channelId }: { channelId: string }) {
               <span>{durationMs > 0 ? formatClock(durationMs) : '--:--'}</span>
             </div>
 
-            {/* Transport */}
-            <div className="flex items-center gap-2">
+            {/* Transport + view controls */}
+            <div className="flex flex-wrap items-center gap-2">
               {isHost ? (
                 <>
                   <Ctl title="Previous" onClick={() => guard(previous(channelId))} disabled={!current}>
@@ -194,7 +197,24 @@ function ActivePanel({ channelId }: { channelId: string }) {
                   {session.state === 'paused' && ' · paused'}
                 </span>
               )}
-              <div className="ml-auto flex items-center gap-1.5">
+              <div className="ml-auto flex items-center gap-1">
+                <Ctl
+                  title={audioOnly ? 'Show video' : 'Audio only (uses less data)'}
+                  onClick={() => setAudioOnly(!audioOnly)}
+                  active={audioOnly}
+                >
+                  {audioOnly ? <VideoOff size={16} /> : <Video size={16} />}
+                </Ctl>
+                {!audioOnly && (
+                  <>
+                    <Ctl title={theater ? 'Normal size' : 'Bigger video'} onClick={() => setTheater(!theater)} active={theater}>
+                      <Expand size={16} />
+                    </Ctl>
+                    <Ctl title="Fullscreen" onClick={requestFullscreen} disabled={!current}>
+                      <Maximize />
+                    </Ctl>
+                  </>
+                )}
                 <button
                   title={muted ? 'Unmute' : 'Mute (just for you)'}
                   onClick={() => setMuted(!muted)}
@@ -217,7 +237,7 @@ function ActivePanel({ channelId }: { channelId: string }) {
             <ErrorText>{error}</ErrorText>
           </div>
 
-          {/* Queue */}
+          {/* Queue: fills the column height on desktop, caps on small screens */}
           <div className="flex min-h-0 flex-col rounded-xl border border-edge bg-bg-1">
             <div className="flex items-center gap-2 border-b border-edge px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink-2">
               <ListMusic size={14} /> Up next · {st.items.length}
@@ -239,7 +259,7 @@ function ActivePanel({ channelId }: { channelId: string }) {
                 </button>
               </div>
             </div>
-            <div className="max-h-64 flex-1 overflow-y-auto p-1.5">
+            <div className={cx('min-h-0 flex-1 overflow-y-auto p-1.5', theater ? 'max-h-64' : 'max-h-64 lg:max-h-none')}>
               {st.items.length === 0 && (
                 <p className="px-2 py-3 text-center text-xs text-ink-2">The queue is empty.</p>
               )}
@@ -277,13 +297,36 @@ function ActivePanel({ channelId }: { channelId: string }) {
   )
 }
 
-function Ctl({ children, title, disabled, onClick }: { children: React.ReactNode; title: string; disabled?: boolean; onClick: () => void }) {
+// Maximize icon (lucide's Maximize2 is used for the mini player's "open").
+function Maximize() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+      <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+    </svg>
+  )
+}
+
+function Ctl({
+  children, title, disabled, active, onClick,
+}: {
+  children: React.ReactNode
+  title: string
+  disabled?: boolean
+  active?: boolean
+  onClick: () => void
+}) {
   return (
     <button
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className="rounded-full bg-bg-3 p-2 text-ink-1 hover:text-ink disabled:opacity-40"
+      className={cx(
+        'rounded-full p-2 disabled:opacity-40',
+        active ? 'bg-accent/20 text-accent' : 'bg-bg-3 text-ink-1 hover:text-ink',
+      )}
     >
       {children}
     </button>

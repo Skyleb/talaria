@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 import { BellOff, Hash, Menu, Moon, Phone, PhoneOff, Plus, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
@@ -8,6 +8,9 @@ import { useCall } from '../call'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
 import { GlobalCall } from '../components/call/CallPanel'
+import { GlobalListen } from '../components/listen/GlobalListen'
+import { InstallPrompt } from '../components/InstallPrompt'
+import { AvatarCropper } from '../components/AvatarCropper'
 import { UserProfileModal } from '../components/UserProfileModal'
 import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
 import FriendsPage from './FriendsPage'
@@ -20,7 +23,18 @@ export default function AppShell() {
   const gatewayStatus = useApp((s) => s.gatewayStatus)
   const [leftOpen, setLeftOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
   const unreadTotal = useApp(selectUnreadTotal)
+
+  // Settings is an overlay: the page underneath stays mounted (so calls and
+  // listening sessions keep going), and the router renders that page from
+  // the last non-settings location.
+  const isSettings = location.pathname.startsWith('/app/settings')
+  const bgRef = useRef(isSettings ? { ...location, pathname: '/app/friends', search: '', hash: '' } : location)
+  if (!isSettings) bgRef.current = location
+  useEffect(() => {
+    useApp.setState({ overlayOpen: isSettings })
+  }, [isSettings])
 
   // Close the drawer on navigation (mobile).
   useEffect(() => setLeftOpen(false), [location.pathname])
@@ -59,18 +73,24 @@ export default function AppShell() {
           </div>
         )}
         <RingToast />
-        <Routes>
+        <Routes location={bgRef.current}>
           <Route index element={<Navigate to="friends" replace />} />
           <Route path="friends" element={<FriendsPage onMenu={() => setLeftOpen(true)} />} />
           <Route path="dm/:channelId" element={<ChatPage onMenu={() => setLeftOpen(true)} />} />
           <Route path="g/:groupId/:channelId" element={<ChatPage onMenu={() => setLeftOpen(true)} />} />
           <Route path="g/:groupId" element={<GroupRedirect />} />
-          <Route path="settings/*" element={<SettingsPage onMenu={() => setLeftOpen(true)} />} />
           <Route path="*" element={<Navigate to="friends" replace />} />
         </Routes>
       </main>
+      {isSettings && (
+        <div className="fixed inset-0 z-[35] flex bg-bg-0">
+          <SettingsPage onClose={() => navigate(bgRef.current)} />
+        </div>
+      )}
       <GlobalCall />
+      <GlobalListen />
       <UserProfileModal />
+      <InstallPrompt />
     </div>
   )
 }
@@ -373,6 +393,7 @@ function GroupSettingsModal({
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [cropFile, setCropFile] = useState<File | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -398,16 +419,11 @@ function GroupSettingsModal({
     }
   }
 
-  async function changeIcon(file: File) {
-    setBusy(true)
-    setError('')
-    try {
-      const res = await uploadFile(file)
-      await patch({ icon_file_id: res.attachment.file_id }, 'Icon updated.')
-    } catch (e: any) {
-      setError(e?.message ?? 'Icon upload failed')
-      setBusy(false)
-    }
+  async function saveIcon(blob: Blob) {
+    const f = new File([blob], blob.type === 'image/png' ? 'icon.png' : 'icon.jpg', { type: blob.type })
+    const res = await uploadFile(f)
+    await patch({ icon_file_id: res.attachment.file_id }, 'Icon updated.')
+    setCropFile(null)
   }
 
   async function deleteGroup() {
@@ -438,10 +454,14 @@ function GroupSettingsModal({
               type="file"
               accept="image/png,image/jpeg,image/gif,image/webp"
               hidden
-              onChange={(e) => e.target.files?.[0] && changeIcon(e.target.files[0])}
+              onChange={(e) => {
+                if (e.target.files?.[0]) setCropFile(e.target.files[0])
+                e.target.value = ''
+              }}
             />
           </label>
         </div>
+        <AvatarCropper file={cropFile} title="Adjust the group icon" round={false} onCancel={() => setCropFile(null)} onDone={saveIcon} />
         <form
           className="space-y-3"
           onSubmit={(e) => {
@@ -667,7 +687,7 @@ export function PageHeader({
   subtitle,
   right,
 }: {
-  onMenu: () => void
+  onMenu?: () => void
   icon?: React.ReactNode
   title: string
   subtitle?: string
@@ -675,9 +695,11 @@ export function PageHeader({
 }) {
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-bg-1 px-3">
-      <button className="rounded p-1.5 text-ink-1 hover:bg-bg-3 md:hidden" onClick={onMenu}>
-        <Menu size={20} />
-      </button>
+      {onMenu && (
+        <button className="rounded p-1.5 text-ink-1 hover:bg-bg-3 md:hidden" onClick={onMenu}>
+          <Menu size={20} />
+        </button>
+      )}
       {icon && <span className="text-ink-2">{icon}</span>}
       <h1 className="truncate font-semibold text-ink">{title}</h1>
       {subtitle && <span className="hidden truncate text-sm text-ink-2 sm:block">— {subtitle}</span>}
