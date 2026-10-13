@@ -106,6 +106,35 @@ export function Spinner({ className }: { className?: string }) {
   )
 }
 
+// Logo: the app icon (three wings on the accent gradient) as inline SVG so it
+// follows the active theme.
+export function Logo({ size = 32, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 512 512"
+      width={size}
+      height={size}
+      className={cx('shrink-0', className)}
+      style={{ borderRadius: size * 0.22 }}
+      aria-label="Talaria"
+      role="img"
+    >
+      <defs>
+        <linearGradient id="talaria-logo-gradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" style={{ stopColor: 'var(--accent)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--accent-hover)' }} />
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" fill="url(#talaria-logo-gradient)" />
+      <g fill="#ffffff">
+        <path d="M120 372 C150 250 260 150 420 130 C380 190 330 230 260 270 C220 295 170 340 120 372 Z" opacity="0.96" />
+        <path d="M136 392 C190 320 290 270 410 250 C360 300 300 330 240 352 C200 366 165 384 136 392 Z" opacity="0.82" />
+        <path d="M152 408 C210 365 300 340 392 346 C340 375 290 390 236 400 C200 406 172 410 152 408 Z" opacity="0.66" />
+      </g>
+    </svg>
+  )
+}
+
 export function Modal({
   open,
   onClose,
@@ -154,12 +183,7 @@ export function AuthCard({
     <div className="flex min-h-full items-center justify-center bg-bg-0 p-4">
       <div className="w-full max-w-sm rounded-3xl border border-edge bg-bg-1 p-7 shadow-lg">
         <div className="mb-6 text-center">
-          <div
-            className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl text-4xl shadow-md"
-            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-hover))' }}
-          >
-            🪽
-          </div>
+          <Logo size={64} className="mx-auto mb-3 shadow-md" />
           <h1 className="text-xl font-bold text-ink">{title}</h1>
           <p className="mt-1 text-sm text-ink-1">{subtitle ?? 'Your own place to hang out'}</p>
         </div>

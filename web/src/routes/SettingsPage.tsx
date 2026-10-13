@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, BellOff, Download, Link2, Moon, Monitor, Sun, X } from 'lucide-react'
+import { Bell, BellOff, ChevronDown, Download, Link2, Moon, Monitor, Sun, X } from 'lucide-react'
 import { AvatarCropper } from '../components/AvatarCropper'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
@@ -31,13 +31,15 @@ export default function SettingsPage({ onMenu, onClose }: { onMenu?: () => void;
         }
       />
       {onClose && <EscToClose onClose={onClose} />}
-      <div className="flex-1 space-y-8 overflow-y-auto p-4 pb-16">
-        <ProfileSection />
-        <NotificationsSection />
-        <AppearanceSection />
-        <PasswordSection />
-        <SessionsSection />
-        {me?.is_admin && <AdminSection />}
+      <div className="flex-1 overflow-y-auto p-4 pb-16">
+        <div className="mx-auto w-full max-w-2xl space-y-3">
+          <ProfileSection />
+          <NotificationsSection />
+          <AppearanceSection />
+          <PasswordSection />
+          <SessionsSection />
+          {me?.is_admin && <AdminSection />}
+        </div>
       </div>
     </div>
   )
@@ -54,11 +56,22 @@ function EscToClose({ onClose }: { onClose: () => void }) {
   return null
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+// Card: one settings category. Collapsed by default so the page reads as a
+// short list; tap the title to open it.
+function Card({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen)
   return (
-    <section className="max-w-lg rounded-xl border border-edge bg-bg-1 p-4">
-      <h2 className="mb-3 font-semibold text-ink">{title}</h2>
-      {children}
+    <section className="w-full rounded-xl border border-edge bg-bg-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left hover:bg-bg-2"
+      >
+        <h2 className="flex-1 font-semibold text-ink">{title}</h2>
+        <ChevronDown size={18} className={cx('text-ink-2 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
     </section>
   )
 }
@@ -101,7 +114,7 @@ function ProfileSection() {
 
   if (!me) return null
   return (
-    <Card title="Profile">
+    <Card title="Profile" defaultOpen>
       <div className="mb-4 flex items-center gap-4">
         <Avatar user={me} size={64} />
         <div className="space-x-2">

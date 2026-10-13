@@ -109,17 +109,18 @@ func (s *Sender) sendOne(ctx context.Context, sub *model.PushSubscription, paylo
 		Keys:     webpush.Keys{Auth: sub.Auth, P256dh: sub.P256dh},
 	}, opts)
 	if err != nil {
-		s.log.Debug("push send failed", "err", err)
+		s.log.Warn("push send failed", "err", err)
 		return
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusNotFound, http.StatusGone:
 		// The browser unsubscribed or the device is gone.
+		s.log.Info("push subscription gone; removed", "status", resp.StatusCode)
 		s.st.DeletePushEndpoint(context.Background(), sub.Endpoint)
 	default:
 		if resp.StatusCode >= 400 {
-			s.log.Debug("push rejected", "status", resp.StatusCode, "endpoint", sub.Endpoint[:min(40, len(sub.Endpoint))])
+			s.log.Warn("push rejected", "status", resp.StatusCode, "endpoint", sub.Endpoint[:min(40, len(sub.Endpoint))])
 		}
 	}
 }

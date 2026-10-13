@@ -25,9 +25,12 @@ func (s *Server) handlePushVAPID(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 	me := auth.UserFrom(r.Context())
+	// PushSubscription.toJSON() also carries expirationTime (usually null);
+	// the strict decoder must know about it or every subscribe is a 400.
 	var req struct {
-		Endpoint string `json:"endpoint"`
-		Keys     struct {
+		Endpoint       string `json:"endpoint"`
+		ExpirationTime any    `json:"expirationTime"`
+		Keys           struct {
 			P256dh string `json:"p256dh"`
 			Auth   string `json:"auth"`
 		} `json:"keys"`

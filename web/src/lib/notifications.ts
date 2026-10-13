@@ -30,7 +30,15 @@ export async function pushState(): Promise<PushState> {
   if (Notification.permission === 'denied') return 'denied'
   const reg = await navigator.serviceWorker.getRegistration()
   const sub = await reg?.pushManager.getSubscription()
-  return sub ? 'enabled' : 'off'
+  if (!sub) return 'off'
+  // The browser may hold a subscription the server never stored (an earlier
+  // failed save); re-register it so "enabled" is true end to end.
+  try {
+    await api.post('/api/v1/push/subscriptions', sub.toJSON())
+    return 'enabled'
+  } catch {
+    return 'off'
+  }
 }
 
 function urlBase64ToUint8Array(b64: string): Uint8Array {

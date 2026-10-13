@@ -2,12 +2,12 @@
 // mounted at the app root so navigating (other channels, settings, friends)
 // never unmounts the YouTube iframe or media element. In the channel it
 // follows the PlayerSlot rectangle that ListenPanel renders; anywhere else
-// it docks as a mini player in the corner.
+// it shrinks to an invisible 2px box so the audio keeps going while the
+// ActivityBanners strip at the top offers the way back.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useNavigate } from 'react-router'
-import { Headphones, LogOut, Maximize2, Minimize2, Pause, Play } from 'lucide-react'
-import { displayName, dmTitle, useApp } from '../../store'
-import { formatClock, positionMs, useListen } from '../../listen'
+import { Headphones, Minimize2, Pause, Play } from 'lucide-react'
+import { useApp } from '../../store'
+import { useListen } from '../../listen'
 import { cx } from '../ui'
 import { MediaPlayer, YouTubePlayer } from './players'
 import type { ListenState } from '../../lib/types'
@@ -32,16 +32,14 @@ function FloatingPlayer({ st, meId }: { st: ListenState; meId: string }) {
   const volume = useListen((s) => s.volume)
   const muted = useListen((s) => s.muted)
   const overlayOpen = useApp((s) => s.overlayOpen)
-  const users = useApp((s) => s.users)
-  const channel = useApp((s) => s.channels[channelId])
-  const navigate = useNavigate()
   const boxRef = useRef<HTMLDivElement>(null)
   const [fs, setFs] = useState(false)
-  const { play, pause, next, leave, reportDuration } = useListen.getState()
+  const { play, pause, next, reportDuration } = useListen.getState()
 
   const isHost = session.host_user_id === meId
   const current = st.items.find((i) => i.id === session.current_item_id) ?? null
   const inSlot = !!slot && slot.channelId === channelId && !overlayOpen && !fs
+  const hidden = !inSlot && !fs
 
   // Fullscreen is requested from the panel's button via a counter.
   useEffect(() => {
@@ -74,24 +72,11 @@ function FloatingPlayer({ st, meId }: { st: ListenState; meId: string }) {
     ;(session.state === 'playing' ? pause(channelId) : play(channelId)).catch(() => {})
   }
 
-  // Re-render the mini player clock while playing.
-  const [, tick] = useState(0)
-  useEffect(() => {
-    if (inSlot || session.state !== 'playing') return
-    const t = setInterval(() => tick((n) => n + 1), 1000)
-    return () => clearInterval(t)
-  }, [inSlot, session.state])
-
   const style: CSSProperties = fs
     ? { position: 'fixed', inset: 0, width: '100%', height: '100%', zIndex: 60 }
     : inSlot && slot
       ? { position: 'fixed', left: slot.rect.left, top: slot.rect.top, width: slot.rect.width, height: slot.rect.height, zIndex: 20 }
-      : { position: 'fixed', left: 16, bottom: 16, width: 'min(320px, calc(100vw - 32px))', zIndex: 45 }
-
-  const channelPath = channel
-    ? channel.kind === 'dm' ? `/app/dm/${channel.id}` : `/app/g/${channel.group_id}/${channel.id}`
-    : '/app'
-  const where = channel ? (channel.kind === 'dm' ? dmTitle(channel, meId, users) : `#${channel.name}`) : ''
+      : { position: 'fixed', left: 0, top: 0, width: 2, height: 2, opacity: 0, pointerEvents: 'none', zIndex: 0 }
 
   const player = current ? (
     current.kind === 'video' && current.refs?.youtube ? (
@@ -119,28 +104,25 @@ function FloatingPlayer({ st, meId }: { st: ListenState; meId: string }) {
     )
   ) : null
 
-  const showCover = audioOnly && !fs
+  const showCover = audioOnly && inSlot
+  // Audio-only (and hidden): keep playing but at a 2px size, which makes
+  // YouTube serve its lowest quality stream; the cover is painted over it.
+  const tiny = showCover || hidden
 
   return (
     <div
       ref={boxRef}
       style={style}
       className={cx(
-        'transition-[left,top,width,height] duration-150 ease-out',
-        inSlot || fs
-          ? 'overflow-hidden rounded-xl bg-black shadow-lg'
-          : 'flex items-center gap-2 rounded-2xl border border-edge bg-bg-1 p-2 shadow-xl',
-        fs && 'rounded-none',
+        'overflow-hidden bg-black',
+        inSlot && 'rounded-xl shadow-lg transition-[left,top,width,height] duration-150 ease-out',
       )}
     >
-      {/* Video box: fills the slot/fullscreen, or a small thumbnail in the mini player. */}
-      <div className={cx('relative shrink-0 overflow-hidden bg-black', inSlot || fs ? 'h-full w-full' : 'h-[54px] w-24 rounded-lg')}>
+      <div className="relative h-full w-full overflow-hidden bg-black">
         <div
           className={cx(
             'absolute inset-0',
-            // Audio-only: keep playing but at a 2px size, which makes YouTube serve
-            // its lowest quality stream, then paint a cover over it.
-            showCover && 'pointer-events-none opacity-0 [&_iframe]:!h-[2px] [&_iframe]:!w-[2px] [&_video]:!h-[2px] [&_video]:!w-[2px]',
+            tiny && 'pointer-events-none opacity-0 [&_iframe]:!h-[2px] [&_iframe]:!w-[2px] [&_video]:!h-[2px] [&_video]:!w-[2px]',
           )}
         >
           {player}
@@ -155,8 +137,8 @@ function FloatingPlayer({ st, meId }: { st: ListenState; meId: string }) {
               <img src={current.refs.thumbnail} alt="" className="h-full w-full object-cover opacity-40 blur-sm" />
             ) : null}
             <span className="absolute flex flex-col items-center gap-1 text-ink">
-              <Headphones size={inSlot ? 36 : 18} className="text-accent" />
-              {inSlot && <span className="text-xs text-ink-1">Audio only</span>}
+              <Headphones size={36} className="text-accent" />
+              <span className="text-xs text-ink-1">Audio only</span>
             </span>
           </button>
         )}
@@ -178,48 +160,6 @@ function FloatingPlayer({ st, meId }: { st: ListenState; meId: string }) {
           </div>
         )}
       </div>
-
-      {/* Mini player chrome */}
-      {!inSlot && !fs && (
-        <>
-          <button
-            onClick={() => navigate(channelPath)}
-            className="min-w-0 flex-1 text-left"
-            title="Back to the listening session"
-          >
-            <div className="truncate text-sm font-medium text-ink">{current?.title ?? 'Listening together'}</div>
-            <div className="truncate text-xs text-ink-2">
-              {where}
-              {current ? ` · ${formatClock(positionMs(session))}` : ''}
-              {session.state === 'paused' && ' · paused'}
-              {!isHost && ` · ${displayName(users, session.host_user_id)} is driving`}
-            </div>
-          </button>
-          {isHost && current && (
-            <button
-              onClick={toggle}
-              title={session.state === 'playing' ? 'Pause for everyone' : 'Play for everyone'}
-              className="rounded-full bg-accent p-2 text-accent-text hover:bg-accent-hover"
-            >
-              {session.state === 'playing' ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
-            </button>
-          )}
-          <button
-            onClick={() => navigate(channelPath)}
-            title="Open"
-            className="rounded-full p-2 text-ink-1 hover:bg-bg-3 hover:text-ink"
-          >
-            <Maximize2 size={15} />
-          </button>
-          <button
-            onClick={() => leave(channelId).catch(() => {})}
-            title="Leave the listening session"
-            className="rounded-full p-2 text-ink-1 hover:bg-bg-3 hover:text-danger"
-          >
-            <LogOut size={15} />
-          </button>
-        </>
-      )}
     </div>
   )
 }

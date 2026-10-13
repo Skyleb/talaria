@@ -10,10 +10,11 @@ import { InviteLinkShare } from '../components/InviteLink'
 import { GlobalCall } from '../components/call/CallPanel'
 import { GlobalListen } from '../components/listen/GlobalListen'
 import { InstallPrompt } from '../components/InstallPrompt'
+import { ActivityBanners } from '../components/ActivityBanners'
 import { AvatarCropper } from '../components/AvatarCropper'
 import { UserProfileModal } from '../components/UserProfileModal'
 import { SearchModal } from '../components/SearchModal'
-import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
+import { Button, cx, ErrorText, Input, Label, Logo, Modal } from '../components/ui'
 import FriendsPage from './FriendsPage'
 import ChatPage from './ChatPage'
 import SettingsPage from './SettingsPage'
@@ -64,11 +65,14 @@ export default function AppShell() {
   }, [])
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-bg-0">
+    <div className="flex h-dvh flex-col overflow-hidden bg-bg-0">
+      {/* Live call / listening sessions you are in but not looking at. */}
+      <ActivityBanners />
+      <div className="relative flex min-h-0 flex-1">
       {/* Left drawer (mobile) / fixed columns (md+) */}
       <div
         className={cx(
-          'fixed inset-y-0 left-0 z-40 flex transition-transform md:static md:z-auto md:translate-x-0',
+          'absolute inset-y-0 left-0 z-40 flex transition-transform md:static md:z-auto md:translate-x-0',
           leftOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -76,7 +80,7 @@ export default function AppShell() {
         <ChannelSidebar />
       </div>
       {leftOpen && (
-        <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setLeftOpen(false)} />
+        <div className="absolute inset-0 z-30 bg-black/40 md:hidden" onClick={() => setLeftOpen(false)} />
       )}
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -96,10 +100,11 @@ export default function AppShell() {
         </Routes>
       </main>
       {isSettings && (
-        <div className="fixed inset-0 z-[35] flex bg-bg-0">
+        <div className="absolute inset-0 z-[35] flex bg-bg-0">
           <SettingsPage onClose={() => navigate(bgRef.current)} />
         </div>
       )}
+      </div>
       <GlobalCall />
       <GlobalListen />
       <UserProfileModal />
@@ -602,6 +607,7 @@ function DMList() {
   return (
     <>
       <div className="flex items-center border-b border-edge px-4 py-3">
+        <Logo size={22} className="mr-2" />
         <h2 className="flex-1 font-semibold text-ink">Talaria</h2>
         <button
           title="Search everything (Ctrl+K)"

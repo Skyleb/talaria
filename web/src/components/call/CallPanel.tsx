@@ -66,8 +66,8 @@ function JoinBanner({ channelId }: { channelId: string }) {
 }
 
 // GlobalCall mounts once in AppShell. It owns the remote audio elements (so
-// sound keeps playing wherever you browse) and shows either the full-screen
-// call view or the floating pill when minimized.
+// sound keeps playing wherever you browse) and shows the full-screen call
+// view unless minimized (then the ActivityBanners strip offers the way back).
 export function GlobalCall() {
   const joinedChannelId = useCall((s) => s.joinedChannelId)
   const minimized = useCall((s) => s.minimized)
@@ -79,11 +79,7 @@ export function GlobalCall() {
       {audioFeeds.map((f) => (
         <AudioSink key={f.key} feed={f} />
       ))}
-      {minimized ? (
-        <CallPill channelId={joinedChannelId} />
-      ) : (
-        <CallOverlay channelId={joinedChannelId} />
-      )}
+      {!minimized && <CallOverlay channelId={joinedChannelId} />}
     </>
   )
 }
@@ -313,41 +309,6 @@ function StreamVideo({ stream, mirror }: { stream: MediaStream; mirror?: boolean
   )
 }
 
-// CallPill: the minimized call — floats over every page so the call is one
-// tap away while you browse.
-function CallPill({ channelId }: { channelId: string }) {
-  const muted = useCall((s) => s.muted)
-  const setMinimized = useCall((s) => s.setMinimized)
-  const { toggleMute, leave } = useCall.getState()
-  const title = useCallTitle(channelId)
-  return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-1 rounded-full border border-edge bg-bg-1 py-1.5 pl-3.5 pr-1.5 shadow-xl">
-      <button
-        onClick={() => setMinimized(false)}
-        title="Open the call"
-        className="flex min-w-0 items-center gap-2"
-      >
-        <LiveDot />
-        <span className="max-w-36 truncate text-sm font-medium text-ink">{title}</span>
-        <Expand size={14} className="text-ink-2" />
-      </button>
-      <button
-        title={muted ? 'Unmute' : 'Mute'}
-        onClick={toggleMute}
-        className={cx('rounded-full p-2', muted ? 'text-danger' : 'text-ink-1 hover:text-ink')}
-      >
-        {muted ? <MicOff size={16} /> : <Mic size={16} />}
-      </button>
-      <button
-        title="Leave call"
-        onClick={leave}
-        className="rounded-full bg-danger p-2 text-white hover:opacity-90"
-      >
-        <PhoneOff size={16} />
-      </button>
-    </div>
-  )
-}
 
 function Controls() {
   const muted = useCall((s) => s.muted)

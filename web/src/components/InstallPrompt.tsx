@@ -9,7 +9,7 @@ import {
   canInstall, enablePush, isIOS, isStandalone, onInstallChange, promptInstall, pushState,
   pushSupported, type PushState,
 } from '../lib/notifications'
-import { Button } from './ui'
+import { Button, Logo } from './ui'
 
 const NEVER_KEY = 'talaria-install-prompt'
 const SNOOZE_KEY = 'talaria-install-snooze'
@@ -70,12 +70,7 @@ export function InstallPrompt() {
     <div className="fixed inset-x-3 bottom-3 z-40 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[26rem]">
       <div className="rounded-2xl border border-edge bg-bg-1 p-4 shadow-xl">
         <div className="flex items-start gap-3">
-          <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl shadow"
-            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-hover))' }}
-          >
-            🪽
-          </div>
+          <Logo size={44} className="shadow" />
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-ink">Get the most out of Talaria</div>
             <p className="mt-0.5 text-sm text-ink-1">Two quick things, both optional.</p>
