@@ -36,7 +36,7 @@ interface ListenStore {
   select: (channelId: string, itemId: string) => Promise<void>
   next: (channelId: string, fromItemId?: string) => Promise<void>
   previous: (channelId: string) => Promise<void>
-  addUrl: (channelId: string, url: string) => Promise<void>
+  addUrl: (channelId: string, url: string) => Promise<AddResult>
   addUpload: (channelId: string, attachmentId: string) => Promise<void>
   removeItem: (channelId: string, itemId: string) => Promise<void>
   transferHost: (channelId: string, userId: string) => Promise<void>
@@ -53,9 +53,19 @@ function applyState(st: ListenState) {
   })
 }
 
-async function cmd(channelId: string, path: string, body: unknown = {}) {
-  const res = await api.post<{ state: ListenState }>(`/api/v1/channels/${channelId}/listen${path}`, body)
+export interface AddResult {
+  added?: number
+  playlist_title?: string
+}
+
+async function postCmd(channelId: string, path: string, body: unknown = {}): Promise<AddResult> {
+  const res = await api.post<{ state: ListenState } & AddResult>(`/api/v1/channels/${channelId}/listen${path}`, body)
   if (res?.state) applyState(res.state)
+  return { added: res?.added, playlist_title: res?.playlist_title }
+}
+
+async function cmd(channelId: string, path: string, body: unknown = {}): Promise<void> {
+  await postCmd(channelId, path, body)
 }
 
 export const useListen = create<ListenStore>((set) => ({
@@ -96,7 +106,7 @@ export const useListen = create<ListenStore>((set) => ({
   select: (c, itemId) => cmd(c, '/select', { item_id: itemId }),
   next: (c, fromItemId) => cmd(c, '/next', fromItemId ? { from_item_id: fromItemId } : {}),
   previous: (c) => cmd(c, '/previous'),
-  addUrl: (c, url) => cmd(c, '/items', { url }),
+  addUrl: (c, url) => postCmd(c, '/items', { url }),
   addUpload: (c, attachmentId) => cmd(c, '/items', { attachment_id: attachmentId }),
   removeItem: async (c, itemId) => {
     const res = await api.del<{ state: ListenState }>(`/api/v1/channels/${c}/listen/items/${itemId}`)

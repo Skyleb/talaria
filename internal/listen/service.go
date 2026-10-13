@@ -446,6 +446,44 @@ func (s *Service) AddItem(ctx context.Context, ch *model.Channel, userID, rawURL
 	return s.broadcast(ctx, ch), nil
 }
 
+// AddEntries appends many YouTube videos at once (a pasted playlist or
+// album). Everything is inserted in order and announced with one broadcast.
+func (s *Service) AddEntries(ctx context.Context, ch *model.Channel, userID string, entries []PlaylistEntry) (*State, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ps, err := s.active(ctx, ch)
+	if err != nil {
+		return nil, 0, err
+	}
+	if _, err := s.requireMember(ctx, ps, userID); err != nil {
+		return nil, 0, err
+	}
+	added := 0
+	for _, e := range entries {
+		refs, _ := json.Marshal(map[string]string{"youtube": e.ID, "thumbnail": e.Thumbnail})
+		it := &model.PlaylistItem{
+			PlaylistID: ps.PlaylistID, AddedBy: userID, Kind: "video",
+			Title: e.Title, Artist: e.Author, DurationMS: e.DurationMS, RefsJSON: string(refs),
+		}
+		if it.Title == "" {
+			it.Title = "YouTube video"
+		}
+		if err := s.st.AppendPlaylistItem(ctx, it); err != nil {
+			return nil, added, err
+		}
+		added++
+		if ps.CurrentItemID == "" {
+			ps.CurrentItemID = it.ID
+			ps.PositionMS = 0
+			ps.AnchorServerMS = nowMS()
+			if err := s.st.UpdatePlayback(ctx, ps.ID, ps.State, ps.PositionMS, ps.AnchorServerMS, ps.CurrentItemID); err != nil {
+				return nil, added, err
+			}
+		}
+	}
+	return s.broadcast(ctx, ch), added, nil
+}
+
 func ext(name string) string {
 	if i := strings.LastIndex(name, "."); i > 0 {
 		return name[i:]

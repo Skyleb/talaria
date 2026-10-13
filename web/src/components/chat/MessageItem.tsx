@@ -7,7 +7,12 @@ import { displayName, useApp } from '../../store'
 import { Avatar } from '../Avatar'
 import { Button, cx } from '../ui'
 import { AttachmentView } from './AttachmentView'
+import { Lightbox } from './Lightbox'
 import type { Message } from '../../lib/types'
+
+// A lone https link to an image file (what the GIF picker sends) renders as
+// the picture itself rather than as a link.
+const IMAGE_LINK = /^https:\/\/\S+\.(?:gif|png|jpe?g|webp)(?:\?\S*)?$/i
 
 export function MessageItem({
   message: m,
@@ -26,6 +31,7 @@ export function MessageItem({
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [lightbox, setLightbox] = useState(false)
 
   const author = users[m.author_id] ?? m.author
   const mine = m.author_id === me?.id
@@ -35,9 +41,10 @@ export function MessageItem({
     for (const u of Object.values(users)) names[u.username.toLowerCase()] = u.display_name || u.username
     return names
   }, [users])
+  const imageURL = !m.deleted_at && IMAGE_LINK.test(m.content.trim()) ? m.content.trim() : null
   const html = useMemo(
-    () => (m.deleted_at ? '' : renderMarkdown(m.content, mentionNames)),
-    [m.content, m.deleted_at, mentionNames],
+    () => (m.deleted_at || imageURL ? '' : renderMarkdown(m.content, mentionNames)),
+    [m.content, m.deleted_at, mentionNames, imageURL],
   )
 
   async function saveEdit() {
@@ -133,8 +140,17 @@ export function MessageItem({
             </div>
           ) : (
             <>
-              {m.content && (
-                <div className="md break-words text-[0.925rem] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: html }} />
+              {imageURL ? (
+                <>
+                  <button onClick={() => setLightbox(true)} className="mt-1 block w-fit" title="View full size">
+                    <img src={imageURL} alt="GIF" loading="lazy" className="max-h-64 max-w-full rounded-lg bg-bg-2" />
+                  </button>
+                  {lightbox && <Lightbox url={imageURL} alt="GIF" onClose={() => setLightbox(false)} />}
+                </>
+              ) : (
+                m.content && (
+                  <div className="md break-words text-[0.925rem] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: html }} />
+                )
               )}
               {m.edited_at ? <span className="text-[10px] text-ink-2"> (edited)</span> : null}
               {(m.attachments ?? []).map((a) => (

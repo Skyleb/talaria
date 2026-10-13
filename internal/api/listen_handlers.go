@@ -187,6 +187,21 @@ func (s *Server) handleListenAddItem(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	if listID, ok := listen.ParseYouTubePlaylistID(req.URL); ok {
+		title, entries, err := listen.FetchYouTubePlaylist(r.Context(), listID, s.Config.YouTube.APIKey)
+		if err != nil {
+			s.Log.Warn("youtube playlist", "list", listID, "err", err)
+			writeErr(w, 502, "playlist", err.Error())
+			return
+		}
+		st, added, err := s.Listen.AddEntries(r.Context(), ch, me.ID, entries)
+		if err != nil {
+			s.listenErr(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"state": st, "added": added, "playlist_title": title})
+		return
+	}
 	st, err := s.Listen.AddItem(r.Context(), ch, me.ID, req.URL, req.AttachmentID)
 	s.listenRespond(w, st, err)
 }

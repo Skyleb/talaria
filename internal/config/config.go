@@ -16,6 +16,7 @@ type Config struct {
 	LanAccess LanAccessConfig `toml:"lan_access"`
 	LanDNS    LanDNSConfig    `toml:"lan_dns"`
 	YouTube   YouTubeConfig   `toml:"youtube"`
+	Gifs      GifsConfig      `toml:"gifs"`
 	WebRTC    WebRTCConfig    `toml:"webrtc"`
 	Net       NetConfig       `toml:"net"`
 
@@ -87,6 +88,12 @@ type LanDNSConfig struct {
 // page; an API key switches to the official Data API (sturdier, quota-bound).
 type YouTubeConfig struct {
 	APIKey string `toml:"api_key"`
+}
+
+// GifsConfig: GIF search in the composer uses Tenor, which needs a (free)
+// API key from Google Cloud. Without one the GIF button explains that.
+type GifsConfig struct {
+	TenorAPIKey string `toml:"tenor_api_key"`
 }
 
 // WebRTCConfig is written now so Phase 2 (voice/video SFU) is purely additive.

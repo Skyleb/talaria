@@ -220,6 +220,9 @@ export interface ServerConfig {
   youtube: {
     api_key: string
   }
+  gifs: {
+    tenor_api_key: string
+  }
   webrtc: {
     udp_port: number
     public_ip: string

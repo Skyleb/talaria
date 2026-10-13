@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Download, FileText, X } from 'lucide-react'
+import { Download, FileText } from 'lucide-react'
 import { fileUrl } from '../../lib/api'
 import { formatBytes } from '../../lib/time'
 import type { Attachment } from '../../lib/types'
+import { Lightbox } from './Lightbox'
 
 export function AttachmentView({ attachment: a }: { attachment: Attachment }) {
   const url = fileUrl(a)
@@ -55,14 +56,7 @@ function ImageAttachment({ a, url }: { a: Attachment; url: string }) {
           style={ratio ? { aspectRatio: String(ratio) } : undefined}
         />
       </button>
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={() => setOpen(false)}>
-          <button className="absolute right-4 top-4 rounded-full bg-black/50 p-2 text-white">
-            <X size={20} />
-          </button>
-          <img src={url} alt={a.file_name} className="max-h-full max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
+      {open && <Lightbox url={url} alt={a.file_name} onClose={() => setOpen(false)} />}
     </>
   )
 }

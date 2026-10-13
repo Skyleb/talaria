@@ -436,6 +436,7 @@ function AddModal({ open, onClose, channelId }: { open: boolean; onClose: () => 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   // A pasted link (or bare video id) is added directly; anything else searches.
@@ -476,9 +477,13 @@ function AddModal({ open, onClose, channelId }: { open: boolean; onClose: () => 
   async function add(idOrUrl: string) {
     setBusyId(idOrUrl)
     setError('')
+    setNotice('')
     try {
-      await addUrl(channelId, idOrUrl)
+      const r = await addUrl(channelId, idOrUrl)
       setAdded((a) => ({ ...a, [idOrUrl]: true }))
+      if (r.added !== undefined) {
+        setNotice(`Added ${r.added} ${r.added === 1 ? 'song' : 'songs'} from ${r.playlist_title ? `"${r.playlist_title}"` : 'the playlist'}.`)
+      }
       if (isLink) setQuery('')
     } catch (e: any) {
       setError(e?.message ?? 'Could not add that')
@@ -517,7 +522,7 @@ function AddModal({ open, onClose, channelId }: { open: boolean; onClose: () => 
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search YouTube or paste a link"
+            placeholder="Search YouTube, or paste a video, playlist, or album link"
             className="pl-9"
             autoFocus
           />
@@ -529,6 +534,7 @@ function AddModal({ open, onClose, channelId }: { open: boolean; onClose: () => 
         )}
       </form>
 
+      {notice && <p className="mt-2 text-sm text-success">{notice}</p>}
       <div className="mt-3 max-h-80 space-y-1 overflow-y-auto">
         {searching && results.length === 0 && (
           <p className="py-6 text-center text-sm text-ink-2">Searching…</p>
