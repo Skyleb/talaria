@@ -48,11 +48,11 @@ func fail(status int, msg string) error { return &Error{Status: status, Message:
 // State is the full picture of a channel's listening session, as broadcast
 // to every channel member (session nil means nothing is playing).
 type State struct {
-	ChannelID string                `json:"channel_id"`
+	ChannelID string                 `json:"channel_id"`
 	Session   *model.PlaybackSession `json:"session"`
 	Items     []*model.PlaylistItem  `json:"items"`
-	Members   []string              `json:"members"`
-	ServerNow int64                 `json:"server_now"`
+	Members   []string               `json:"members"`
+	ServerNow int64                  `json:"server_now"`
 }
 
 type Service struct {

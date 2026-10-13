@@ -83,9 +83,9 @@ func (s *Server) publicIPs(domain string) []string {
 }
 
 type pubIPCache struct {
-	pubIPMu     sync.Mutex
-	pubIPDomain string
-	pubIPs      []string
+	pubIPMu      sync.Mutex
+	pubIPDomain  string
+	pubIPs       []string
 	pubIPFetched time.Time
 
 	lanResMu      sync.Mutex

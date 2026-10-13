@@ -187,15 +187,15 @@ func readJSON(ctx context.Context, conn *websocket.Conn, v any) error {
 
 // ReadyPayload is the full bootstrap state sent on fresh connects.
 type ReadyPayload struct {
-	User        *model.User              `json:"user"`
-	Groups      []GroupSummary           `json:"groups"`
-	DMChannels  []*model.Channel         `json:"dm_channels"`
-	Friends     []FriendEntry            `json:"friends"`
-	ReadStates  []*model.ReadState       `json:"read_states"`
-	LatestIDs   map[string]string        `json:"latest_message_ids"`
-	OnlineUsers []string                 `json:"online_user_ids"`
-	MutedChannelIDs []string             `json:"muted_channel_ids"`
-	Users       map[string]model.PublicUser `json:"users"`
+	User            *model.User                 `json:"user"`
+	Groups          []GroupSummary              `json:"groups"`
+	DMChannels      []*model.Channel            `json:"dm_channels"`
+	Friends         []FriendEntry               `json:"friends"`
+	ReadStates      []*model.ReadState          `json:"read_states"`
+	LatestIDs       map[string]string           `json:"latest_message_ids"`
+	OnlineUsers     []string                    `json:"online_user_ids"`
+	MutedChannelIDs []string                    `json:"muted_channel_ids"`
+	Users           map[string]model.PublicUser `json:"users"`
 	// ActiveCalls carries call.state payloads for in-progress calls the user
 	// can see, so a fresh client renders them immediately.
 	ActiveCalls []any `json:"active_calls,omitempty"`
@@ -204,9 +204,9 @@ type ReadyPayload struct {
 }
 
 type GroupSummary struct {
-	Group    *model.Group          `json:"group"`
-	Channels []*model.Channel      `json:"channels"`
-	Members  []*model.GroupMember  `json:"members"`
+	Group    *model.Group         `json:"group"`
+	Channels []*model.Channel     `json:"channels"`
+	Members  []*model.GroupMember `json:"members"`
 }
 
 type FriendEntry struct {

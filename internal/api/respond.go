@@ -60,11 +60,11 @@ func writeErr(w http.ResponseWriter, status int, code, msg string) {
 	writeJSON(w, status, map[string]apiError{"error": {Code: code, Message: msg}})
 }
 
-func badRequest(w http.ResponseWriter, msg string)  { writeErr(w, 400, "bad_request", msg) }
-func unauthorized(w http.ResponseWriter)            { writeErr(w, 401, "unauthorized", "not signed in") }
-func forbidden(w http.ResponseWriter, msg string)   { writeErr(w, 403, "forbidden", msg) }
-func notFound(w http.ResponseWriter)                { writeErr(w, 404, "not_found", "not found") }
-func conflict(w http.ResponseWriter, msg string)    { writeErr(w, 409, "conflict", msg) }
+func badRequest(w http.ResponseWriter, msg string) { writeErr(w, 400, "bad_request", msg) }
+func unauthorized(w http.ResponseWriter)           { writeErr(w, 401, "unauthorized", "not signed in") }
+func forbidden(w http.ResponseWriter, msg string)  { writeErr(w, 403, "forbidden", msg) }
+func notFound(w http.ResponseWriter)               { writeErr(w, 404, "not_found", "not found") }
+func conflict(w http.ResponseWriter, msg string)   { writeErr(w, 409, "conflict", msg) }
 func serverError(w http.ResponseWriter, log *slog.Logger, err error) {
 	log.Error("internal error", "err", err)
 	writeErr(w, 500, "internal", "internal server error")

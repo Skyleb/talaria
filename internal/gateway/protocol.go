@@ -1,10 +1,12 @@
 // Package gateway implements the realtime WebSocket protocol.
 //
 // Envelope: {"op":"evt"|"cmd"|"hello"|"resume"|"resumed"|"reset"|"ping"|"pong"|"err",
-//            "t":"message.create", "seq":123, "n":"nonce", "d":{...}}
+//
+//	"t":"message.create", "seq":123, "n":"nonce", "d":{...}}
 //
 // Event namespaces reserved for later phases (do not reuse):
-//   Phase 2: call.*, rtc.*   Phase 3: presence.activity   Phase 4: sync.*
+//
+//	Phase 2: call.*, rtc.*   Phase 3: presence.activity   Phase 4: sync.*
 package gateway
 
 import "encoding/json"

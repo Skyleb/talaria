@@ -348,8 +348,8 @@ func makeResponse(q []byte, qEnd int, answer net.IP, ttl uint32) []byte {
 	}
 	resp := make([]byte, qEnd, qEnd+16)
 	copy(resp, q[:qEnd])
-	resp[2] = q[2]&0x79 | 0x84 // keep opcode+RD; set QR+AA; clear TC
-	resp[3] = 0x80             // RA set, rcode NOERROR
+	resp[2] = q[2]&0x79 | 0x84               // keep opcode+RD; set QR+AA; clear TC
+	resp[3] = 0x80                           // RA set, rcode NOERROR
 	binary.BigEndian.PutUint16(resp[4:6], 1) // QDCOUNT
 	var ancount uint16
 	if answer != nil {

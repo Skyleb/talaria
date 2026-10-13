@@ -16,11 +16,11 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	var req struct {
-		DisplayName      *string `json:"display_name"`
-		StatusText       *string `json:"status_text"`
-		AvatarFileID     *string `json:"avatar_file_id"`
-		CurrentPassword  *string `json:"current_password"`
-		NewPassword      *string `json:"new_password"`
+		DisplayName     *string `json:"display_name"`
+		StatusText      *string `json:"status_text"`
+		AvatarFileID    *string `json:"avatar_file_id"`
+		CurrentPassword *string `json:"current_password"`
+		NewPassword     *string `json:"new_password"`
 	}
 	if !decode(w, r, &req) {
 		return

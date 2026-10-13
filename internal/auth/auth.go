@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	CookieName     = "talaria_session"
-	sessionTTL     = 30 * 24 * time.Hour
-	touchInterval  = time.Hour // only rewrite last_seen/expiry this often
+	CookieName    = "talaria_session"
+	sessionTTL    = 30 * 24 * time.Hour
+	touchInterval = time.Hour // only rewrite last_seen/expiry this often
 )
 
 var hashParams = &argon2id.Params{

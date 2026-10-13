@@ -25,13 +25,13 @@ func scanUser(row interface{ Scan(...any) error }) (*model.User, error) {
 
 func (s *Store) CreateUser(ctx context.Context, username, displayName, passwordHash string, isAdmin bool) (*model.User, error) {
 	u := &model.User{
-		ID:          NewID(),
-		Username:    strings.ToLower(strings.TrimSpace(username)),
-		DisplayName: strings.TrimSpace(displayName),
+		ID:           NewID(),
+		Username:     strings.ToLower(strings.TrimSpace(username)),
+		DisplayName:  strings.TrimSpace(displayName),
 		PasswordHash: passwordHash,
-		IsAdmin:     isAdmin,
-		CreatedAt:   now(),
-		UpdatedAt:   now(),
+		IsAdmin:      isAdmin,
+		CreatedAt:    now(),
+		UpdatedAt:    now(),
 	}
 	if u.DisplayName == "" {
 		u.DisplayName = u.Username

@@ -34,10 +34,10 @@ type DNS01Manager struct {
 	directory string // ACME directory URL; "" = Let's Encrypt production
 	log       *slog.Logger
 
-	cert   atomic.Pointer[tls.Certificate]
-	errMu  sync.Mutex
+	cert    atomic.Pointer[tls.Certificate]
+	errMu   sync.Mutex
 	lastErr string
-	cancel context.CancelFunc
+	cancel  context.CancelFunc
 }
 
 // renewBefore is how far ahead of expiry renewal starts.

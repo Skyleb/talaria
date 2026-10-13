@@ -23,13 +23,13 @@ const (
 
 // Room is one active call, keyed by channel ID.
 type Room struct {
-	mu        sync.Mutex
-	mgr       *Manager
-	channel   *model.Channel
-	callID    string
-	peers     map[string]*Peer // userID -> peer
-	closed    bool
-	stopTick  chan struct{}
+	mu       sync.Mutex
+	mgr      *Manager
+	channel  *model.Channel
+	callID   string
+	peers    map[string]*Peer // userID -> peer
+	closed   bool
+	stopTick chan struct{}
 }
 
 // Peer is one participant: a publisher PC (client->server media) and a
@@ -48,7 +48,7 @@ type Peer struct {
 
 	// streamMeta maps the client's uplink stream IDs to mic|cam|screen.
 	streamMeta map[string]string
-	published  map[string]*PublishedTrack // by forwarded track UID
+	published  map[string]*PublishedTrack   // by forwarded track UID
 	senders    map[string]*webrtc.RTPSender // forwarded track UID -> sender on sub PC
 
 	muted  bool
@@ -59,11 +59,11 @@ type Peer struct {
 
 // PublishedTrack is one uplink track being forwarded to other peers.
 type PublishedTrack struct {
-	uid    string
-	owner  *Peer
-	kind   string
-	local  *webrtc.TrackLocalStaticRTP
-	remote *webrtc.TrackRemote
+	uid     string
+	owner   *Peer
+	kind    string
+	local   *webrtc.TrackLocalStaticRTP
+	remote  *webrtc.TrackRemote
 	isVideo bool
 }
 
