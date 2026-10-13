@@ -42,6 +42,7 @@ export default function SettingsPage({ onMenu, onClose }: { onMenu?: () => void;
           <PasswordSection />
           <SessionsSection />
           {me?.is_admin && <AdminSection />}
+          <AboutSection />
         </div>
       </div>
     </div>
@@ -964,5 +965,39 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
       <div className="text-xs text-ink-2">{label}</div>
       <div className="text-lg font-semibold text-ink">{value}</div>
     </div>
+  )
+}
+
+// AboutSection: what this is and where to get your own. Shown to everyone.
+function AboutSection() {
+  const [version, setVersion] = useState('')
+  useEffect(() => {
+    api
+      .get<{ version?: string }>('/api/v1/server/info')
+      .then((r) => setVersion(r.version ?? ''))
+      .catch(() => {})
+  }, [])
+  return (
+    <Card title="About Talaria" defaultOpen>
+      <div className="space-y-2 text-sm text-ink-1">
+        <p>
+          Talaria is free, open-source software: a private chat, calls and listen-together server that one
+          person runs for their friends, as a single file on their own computer.
+          {version && <span className="text-ink-2"> This server runs version {version}.</span>}
+        </p>
+        <p>
+          Want a place of your own? Download Talaria and set it up in a couple of minutes:{' '}
+          <a
+            href="https://github.com/Skyleb/talaria"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-accent underline underline-offset-2 hover:text-accent-hover"
+          >
+            github.com/Skyleb/talaria
+          </a>
+          . Found a bug or have an idea? That is the place to report it too.
+        </p>
+      </div>
+    </Card>
   )
 }
