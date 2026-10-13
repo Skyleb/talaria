@@ -174,3 +174,37 @@ func TestNormalizeUpstreams(t *testing.T) {
 		t.Fatal("expected error for empty list")
 	}
 }
+
+// answeringUpstream responds to every A query with the given IP.
+func answeringUpstream(t *testing.T, ip net.IP) string {
+	t.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, raddr, err := conn.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+			if _, _, qEnd, ok := parseQuestion(buf[:n]); ok {
+				conn.WriteToUDP(makeResponse(buf[:n], qEnd, ip, 60), raddr)
+			}
+		}
+	}()
+	return conn.LocalAddr().String()
+}
+
+func TestResolveABypassesOSResolver(t *testing.T) {
+	up := answeringUpstream(t, net.IPv4(203, 0, 113, 7))
+	ips, err := ResolveA("chat.example.org", []string{up})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ips) != 1 || ips[0].String() != "203.0.113.7" {
+		t.Fatalf("got %v, want [203.0.113.7]", ips)
+	}
+}

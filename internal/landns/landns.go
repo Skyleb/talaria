@@ -343,6 +343,9 @@ func parseQuestion(m []byte) (name string, qtype uint16, qEnd int, ok bool) {
 // makeResponse builds an authoritative reply to the query in q. With a
 // non-nil IPv4 answer it carries one A record; otherwise an empty NOERROR.
 func makeResponse(q []byte, qEnd int, answer net.IP, ttl uint32) []byte {
+	if answer != nil {
+		answer = answer.To4()
+	}
 	resp := make([]byte, qEnd, qEnd+16)
 	copy(resp, q[:qEnd])
 	resp[2] = q[2]&0x79 | 0x84 // keep opcode+RD; set QR+AA; clear TC

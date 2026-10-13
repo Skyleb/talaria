@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/skyle/talaria/internal/landns"
 )
 
 // lanRedirect intercepts page loads that reach the main domain through the
@@ -50,8 +52,12 @@ func (s *Server) lanRedirect(next http.Handler) http.Handler {
 	})
 }
 
-// publicIPs resolves (and caches for 5 minutes) the main domain's addresses —
-// a request arriving *from* one of them is a hairpinned LAN client.
+// publicIPs resolves (and caches for 5 minutes) the main domain's public
+// addresses — a request arriving *from* one of them is a hairpinned LAN
+// client. Resolution goes to public resolvers on the wire (landns.ResolveA):
+// the OS resolver would honor hosts-file entries or split-horizon DNS on the
+// server machine, which are common on exactly the setups that need lan
+// access and would hide the domain's true public IP.
 func (s *Server) publicIPs(domain string) []string {
 	s.pubIPMu.Lock()
 	defer s.pubIPMu.Unlock()
@@ -61,7 +67,7 @@ func (s *Server) publicIPs(domain string) []string {
 	s.pubIPDomain = domain
 	s.pubIPFetched = time.Now()
 	s.pubIPs = nil
-	if ips, err := net.LookupIP(domain); err == nil {
+	if ips, err := landns.ResolveA(domain, []string{"1.1.1.1:53", "8.8.8.8:53"}); err == nil {
 		for _, ip := range ips {
 			s.pubIPs = append(s.pubIPs, ip.String())
 		}
