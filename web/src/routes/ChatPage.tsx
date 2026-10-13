@@ -145,8 +145,10 @@ function MemberPanel({ groupId, open, onClose }: { groupId: string; open: boolea
       {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} />}
       <aside
         className={cx(
-          'fixed inset-y-0 right-0 z-40 flex w-60 translate-x-full flex-col bg-bg-1 border-l border-edge transition-transform',
-          open && 'translate-x-0',
+          'fixed inset-y-0 right-0 z-40 flex w-60 flex-col bg-bg-1 border-l border-edge transition-transform',
+          // Conditional, never stacked: conflicting translate utilities
+          // resolve by stylesheet order, not class order (hidden would win).
+          open ? 'translate-x-0' : 'translate-x-full',
           'lg:static lg:z-auto', open ? 'lg:flex' : 'lg:hidden',
         )}
       >

@@ -27,8 +27,8 @@ export default function AppShell() {
       {/* Left drawer (mobile) / fixed columns (md+) */}
       <div
         className={cx(
-          'fixed inset-y-0 left-0 z-40 flex -translate-x-full transition-transform md:static md:translate-x-0',
-          leftOpen && 'translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex transition-transform md:static md:translate-x-0',
+          leftOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
         <GroupRail />
