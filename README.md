@@ -91,6 +91,13 @@ allow microphones and cameras on HTTPS, so calls need this step too.
    ask the ISP for a public IP or use a tunnel such as Tailscale Funnel.
 
 2. **Get a name.** Either:
+   - **Free: a Talaria name.** In the setup wizard (or *Settings → Admin →
+     Dynamic DNS*, provider *Talaria name*) type a name and press *Claim*:
+     you get `yourname.talaria.gg`, already pointed at your connection, with
+     a token Talaria stores for you. No account, nothing to install. The
+     HTTPS domain and home-access domain are filled in automatically. Names
+     are served by the public talaria.gg server; see *Host names for others*
+     below to run your own.
    - **Free: DuckDNS.** Create a subdomain at [duckdns.org](https://www.duckdns.org)
      and copy your token. In Talaria, *Settings → Admin*: set the HTTPS domain
      to `yourname.duckdns.org`, enable *Dynamic DNS* with provider DuckDNS and
@@ -108,17 +115,19 @@ allow microphones and cameras on HTTPS, so calls need this step too.
    fetches a Let's Encrypt certificate automatically, and serves
    `https://your-name`. Give friends that address.
 
-Equivalent `talaria.toml` for the DuckDNS case:
+Equivalent `talaria.toml` for a Talaria name (DuckDNS is the same with
+`provider = "duckdns"`, your DuckDNS token, and no `url`):
 
 ```toml
 [tls]
 mode = "auto"
-domain = "yourname.duckdns.org"
+domain = "yourname.talaria.gg"
 
 [ddns]
 enabled = true
-provider = "duckdns"
-token = "your-duckdns-token"
+provider = "talaria"
+url = "https://talaria.gg"
+token = "tdns_…"   # from the claim; it is the only key to your name
 ```
 
 **Already running on one name and switching to another?** Change the
@@ -128,13 +137,34 @@ name that does not yet point at your server, so you cannot lock yourself out.
 
 **Blank page from your own Wi-Fi while remote friends are fine?** Your router
 cannot reach its own public address from inside (NAT loopback). Turn on *Home
-network access* in Settings → Admin with a second name (another free DuckDNS
-subdomain, or `lan.yourdomain` on Porkbun); Talaria points it at the
+network access* in Settings → Admin with a second name (`lan.yourname.talaria.gg`
+for a Talaria name, another free DuckDNS subdomain, or `lan.yourdomain` on
+Porkbun); Talaria points it at the
 machine's LAN address with its own certificate and redirects home devices to
 it. Many routers do support loopback, in which case leave this off.
 
 **No domain at all?** `[tls] mode = "selfsigned"` serves HTTPS on your LAN
 with a self-signed certificate (browsers warn once) so calls work at home.
+
+### Host names for others
+
+Any Talaria server with a domain at Porkbun can hand out names under it,
+the way talaria.gg does. In *Settings → Admin → Hosted DDNS* turn it on,
+set the zone (your domain) and, if Dynamic DNS is not already using
+Porkbun, the API key pair. Other installations then enter your address as
+the hosting server when they pick the *Talaria name* provider. Names are
+claimed without an account (five per address per hour, reserved words and
+your own hostnames excluded), each comes with a secret token that also
+covers subdomains such as `lan.name`, and the list of issued names with
+revoke buttons is in the same section. Records are published through
+Porkbun, so they keep resolving even while your server is offline. Details
+of the API are in [`docs/hosted-ddns.md`](docs/hosted-ddns.md).
+
+Two things to know before opening it up: you will see every participating
+server's public IP, and Let's Encrypt allows about 50 new certificates a
+week across all names under one registered domain, which caps how many new
+servers can come online per week until the zone is on the Public Suffix
+List.
 
 ## Keep it running
 

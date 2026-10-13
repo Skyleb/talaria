@@ -230,7 +230,7 @@ export interface ServerConfig {
   }
   ddns: {
     enabled: boolean
-    provider: 'duckdns' | 'porkbun' | 'custom'
+    provider: 'duckdns' | 'porkbun' | 'talaria' | 'custom'
     domain: string
     token: string
     secret: string
@@ -240,6 +240,13 @@ export interface ServerConfig {
   lan_access: {
     enabled: boolean
     domain: string
+  }
+  ddns_host: {
+    enabled: boolean
+    zone: string
+    api_key: string
+    secret: string
+    max_names: number
   }
   youtube: {
     api_key: string
@@ -254,6 +261,22 @@ export interface ServerConfig {
     max_screen_kbps: number
     max_downlink_kbps: number
   }
+}
+
+// A name this server issued through hosted DDNS (admin view).
+export interface DDNSHostName {
+  name: string
+  created_at: number
+  created_ip: string
+  last_seen: number
+  records?: { host: string; type: string; content: string; updated_at: number }[]
+}
+
+// Result of claiming a name at a hosting Talaria server.
+export interface NameClaim {
+  name: string
+  domain: string
+  token: string
 }
 
 export interface LanAccessStatus {

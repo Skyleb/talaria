@@ -14,7 +14,7 @@ import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
 import { Button, cx, ErrorText, Input, Label, Segmented, Select } from '../components/ui'
 import { PageHeader } from './AppShell'
-import type { Invite, LanAccessStatus, ServerConfig, SessionInfo, User } from '../lib/types'
+import type { DDNSHostName, Invite, LanAccessStatus, NameClaim, ServerConfig, SessionInfo, User } from '../lib/types'
 import { formatDateTime, formatBytes } from '../lib/time'
 
 export default function SettingsPage({ onMenu, onClose }: { onMenu?: () => void; onClose?: () => void }) {
@@ -617,6 +617,153 @@ function Toggle({
   )
 }
 
+// TalariaNameFields configures the "talaria" DDNS provider: which Talaria
+// server hosts the name, the one-click claim, and the resulting token.
+function TalariaNameFields({
+  url,
+  token,
+  domain,
+  onChange,
+  onClaimed,
+}: {
+  url: string
+  token: string
+  domain: string
+  onChange: (v: { url?: string; token?: string; domain?: string }) => void
+  onClaimed: (claim: NameClaim) => void
+}) {
+  const [wanted, setWanted] = useState('')
+  const [zone, setZone] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const host = url || 'https://talaria.gg'
+
+  useEffect(() => {
+    setZone('')
+    api
+      .post<{ zone: string }>('/api/v1/admin/claim-name', { url: host, name: '' })
+      .then((r) => setZone(r.zone))
+      .catch(() => setZone(''))
+  }, [host])
+
+  async function claim() {
+    setBusy(true)
+    setErr('')
+    try {
+      const c = await api.post<NameClaim>('/api/v1/admin/claim-name', { url: host, name: wanted })
+      onClaimed(c)
+      setWanted('')
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not claim the name')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label>Hosting server</Label>
+        <Input value={url} onChange={(e) => onChange({ url: e.target.value })} placeholder="https://talaria.gg" />
+      </div>
+      {token ? (
+        <>
+          <div>
+            <Label>Name token</Label>
+            <Input type="password" value={token} onChange={(e) => onChange({ token: e.target.value })} />
+          </div>
+          <p className="text-xs text-ink-2">
+            Your name is <strong className="text-ink">{domain || '(set the DDNS domain below)'}</strong>. The token is
+            the only thing that lets anyone repoint it — keep it private. It also covers names under it, like{' '}
+            <code>lan.{domain || 'yourname'}</code>.
+          </p>
+        </>
+      ) : (
+        <div>
+          <Label>Pick a name</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              value={wanted}
+              onChange={(e) => setWanted(e.target.value.toLowerCase())}
+              placeholder="yourname"
+              className="flex-1"
+            />
+            <span className="whitespace-nowrap text-sm text-ink-2">.{zone || '…'}</span>
+            <Button type="button" onClick={claim} disabled={busy || !wanted || !zone}>
+              {busy ? 'Claiming…' : 'Claim'}
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-ink-2">
+            Free, no account needed. 3-32 lowercase letters, digits and hyphens. The name points at this
+            connection straight away; the HTTPS domain and home-access domain are filled in for you if empty.
+            {!zone && ' Could not reach the hosting server — check the address above.'}
+          </p>
+          <ErrorText>{err}</ErrorText>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// HostedNamesList shows the names this server has issued, with revoke.
+function HostedNamesList() {
+  const [names, setNames] = useState<DDNSHostName[] | null>(null)
+  const [zone, setZone] = useState('')
+  const [err, setErr] = useState('')
+
+  const load = () =>
+    api
+      .get<{ names: DDNSHostName[]; zone: string }>('/api/v1/admin/ddns-host/names')
+      .then((r) => {
+        setNames(r.names)
+        setZone(r.zone)
+      })
+      .catch((e: any) => setErr(e?.message ?? 'Could not load names'))
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  async function revoke(name: string) {
+    if (!confirm(`Revoke ${name}.${zone}? Its records are removed and the server using it loses its address.`)) return
+    try {
+      await api.del(`/api/v1/admin/ddns-host/names/${encodeURIComponent(name)}`)
+      load()
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not revoke')
+    }
+  }
+
+  if (err) return <ErrorText>{err}</ErrorText>
+  if (!names) return null
+  if (names.length === 0) return <p className="text-xs text-ink-2">No names claimed yet.</p>
+  return (
+    <div className="divide-y divide-edge rounded-lg border border-edge">
+      {names.map((n) => {
+        const a = n.records?.find((r) => r.type === 'A' && !r.host.startsWith('lan.'))
+        return (
+          <div key={n.name} className="flex items-center gap-3 px-3 py-2 text-sm">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium text-ink">
+                {n.name}.{zone}
+                {a && <span className="ml-2 font-normal text-ink-2">→ {a.content}</span>}
+              </div>
+              <div className="text-xs text-ink-2">
+                {n.records?.length ?? 0} record{n.records?.length === 1 ? '' : 's'} · claimed{' '}
+                {new Date(n.created_at).toLocaleDateString()} · last seen{' '}
+                {n.last_seen ? new Date(n.last_seen).toLocaleString() : 'never'}
+              </div>
+            </div>
+            <Button variant="ghost" className="text-danger" onClick={() => revoke(n.name)}>
+              Revoke
+            </Button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ServerConfigSection lets the admin manage talaria.toml from the browser —
 // no hand-editing required.
 function ServerConfigSection() {
@@ -748,12 +895,28 @@ function ServerConfigSection() {
               <div>
                 <Label>Provider</Label>
                 <Select value={cfg.ddns.provider} onChange={(e) => patch('ddns', { provider: e.target.value as ServerConfig['ddns']['provider'] })}>
+                  <option value="talaria">Talaria name (free — from talaria.gg or another Talaria server)</option>
                   <option value="duckdns">DuckDNS (free — duckdns.org)</option>
                   <option value="porkbun">Porkbun (your own domain — porkbun.com)</option>
                   <option value="custom">Custom update URL</option>
                 </Select>
               </div>
-              {cfg.ddns.provider === 'duckdns' ? (
+              {cfg.ddns.provider === 'talaria' ? (
+                <TalariaNameFields
+                  url={cfg.ddns.url}
+                  token={cfg.ddns.token}
+                  domain={cfg.ddns.domain}
+                  onChange={(v) => patch('ddns', v)}
+                  onClaimed={(claim) => {
+                    setCfg({
+                      ...cfg,
+                      ddns: { ...cfg.ddns, token: claim.token, domain: claim.domain },
+                      tls: { ...cfg.tls, domain: cfg.tls.domain || claim.domain },
+                      lan_access: { ...cfg.lan_access, domain: cfg.lan_access.domain || `lan.${claim.domain}` },
+                    })
+                  }}
+                />
+              ) : cfg.ddns.provider === 'duckdns' ? (
                 <div>
                   <Label>DuckDNS token</Label>
                   <Input
@@ -832,10 +995,23 @@ function ServerConfigSection() {
                 <Input
                   value={cfg.lan_access.domain}
                   onChange={(e) => patch('lan_access', { domain: e.target.value })}
-                  placeholder={cfg.ddns.provider === 'porkbun' ? 'lan.yourdomain.gg' : 'yourname-lan.duckdns.org'}
+                  placeholder={
+                    cfg.ddns.provider === 'talaria'
+                      ? `lan.${cfg.ddns.domain || 'yourname.talaria.gg'}`
+                      : cfg.ddns.provider === 'porkbun'
+                        ? 'lan.yourdomain.gg'
+                        : 'yourname-lan.duckdns.org'
+                  }
                 />
                 <p className="mt-1 text-xs text-ink-2">
-                  {cfg.ddns.provider === 'porkbun' ? (
+                  {cfg.ddns.provider === 'talaria' ? (
+                    <>
+                      Any name under your Talaria name — <code>lan.{cfg.ddns.domain || 'yourname.talaria.gg'}</code>{' '}
+                      is the usual choice, no need to claim it separately. Talaria points it at this
+                      machine{lanIP ? ` (${lanIP})` : ''} and fetches its certificate automatically, using
+                      the name token from above.
+                    </>
+                  ) : cfg.ddns.provider === 'porkbun' ? (
                     <>
                       Any subdomain of your Porkbun domain — no need to create it first. Talaria
                       points it at this machine{lanIP ? ` (${lanIP})` : ''} and fetches its
@@ -899,6 +1075,63 @@ function ServerConfigSection() {
               searches an hour, plenty for a home server. Without one the GIF button explains that search is off.
             </p>
           </div>
+        </div>
+
+        <div className="space-y-3">
+          <SubHead>Hosted DDNS — give names to other Talaria servers</SubHead>
+          <Toggle
+            checked={cfg.ddns_host.enabled}
+            onChange={(v) => patch('ddns_host', { enabled: v })}
+            label="Act as a dynamic-DNS provider for other Talaria installations"
+            hint="Other servers claim a name under your zone and keep it pointed at their connection through this server. Records are published via Porkbun. Applies immediately on save."
+          />
+          {cfg.ddns_host.enabled && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Zone</Label>
+                  <Input
+                    value={cfg.ddns_host.zone}
+                    onChange={(e) => patch('ddns_host', { zone: e.target.value })}
+                    placeholder={cfg.tls.domain || 'yourdomain.gg'}
+                  />
+                  <p className="mt-1 text-xs text-ink-2">
+                    Names are issued as <code>name.{cfg.ddns_host.zone || 'zone'}</code>. Must be hosted at
+                    Porkbun. Your own hostnames in it are reserved automatically.
+                  </p>
+                </div>
+                <div>
+                  <Label>Name limit</Label>
+                  <Input type="number" value={cfg.ddns_host.max_names || ''} onChange={(e) => patch('ddns_host', { max_names: num(e.target.value) })} placeholder="1000" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Porkbun API key {cfg.ddns.provider === 'porkbun' && '(optional)'}</Label>
+                  <Input
+                    value={cfg.ddns_host.api_key}
+                    onChange={(e) => patch('ddns_host', { api_key: e.target.value })}
+                    placeholder={cfg.ddns.provider === 'porkbun' ? 'uses the Dynamic DNS key' : 'pk1_…'}
+                  />
+                </div>
+                <div>
+                  <Label>Secret API key {cfg.ddns.provider === 'porkbun' && '(optional)'}</Label>
+                  <Input
+                    type="password"
+                    value={cfg.ddns_host.secret}
+                    onChange={(e) => patch('ddns_host', { secret: e.target.value })}
+                    placeholder={cfg.ddns.provider === 'porkbun' ? 'uses the Dynamic DNS secret' : 'sk1_…'}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-ink-2">
+                Heads-up: Let's Encrypt allows 50 new certificates per week across all names under one
+                registered domain, so roughly that many new servers can come online per week until the
+                zone is on the Public Suffix List. You will also see each server's public IP here.
+              </p>
+              <HostedNamesList />
+            </>
+          )}
         </div>
 
         <div className="space-y-3">
