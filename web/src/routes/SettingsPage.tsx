@@ -3,7 +3,7 @@ import { Bell, BellOff, ChevronDown, Download, Link2, Moon, Monitor, Sun, X } fr
 import { AvatarCropper } from '../components/AvatarCropper'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
-import { usePrefs, type AVPrefs } from '../prefs'
+import { isMobile, usePrefs, type AVPrefs } from '../prefs'
 import { MIC_TIERS, CAM_PRESETS, SCREEN_PRESETS } from '../media/encodings'
 import { PALETTES } from '../lib/palettes'
 import {
@@ -531,6 +531,20 @@ function VoiceVideoSection() {
               </Select>
             </div>
           </div>
+          {isMobile() && (
+            <div>
+              <Label>Which camera</Label>
+              <Segmented
+                value={prefs.camFacing}
+                onChange={(v) => set({ camFacing: v })}
+                options={[
+                  { value: 'user', label: 'Front (selfie)' },
+                  { value: 'environment', label: 'Rear' },
+                ]}
+              />
+              <p className="mt-1 text-xs text-ink-2">You can also flip cameras from the call controls while your camera is on.</p>
+            </div>
+          )}
           {(CAM_PRESETS[prefs.camPreset].heavy || SCREEN_PRESETS[prefs.screenPreset].heavy) && (
             <p className="text-xs text-warning">
               60 fps, 1440p and 4K need a strong machine and a fast upload (you send several sizes at once). The server's upload

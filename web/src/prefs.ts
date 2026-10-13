@@ -4,10 +4,13 @@ import { create } from 'zustand'
 export type MicTier = 'voice' | 'balanced' | 'music'
 export type CamPreset = '360p' | '720p' | '1080p' | '1080p60' | '1440p' | '1440p60' | '2160p'
 export type ScreenPreset = 'text' | 'motion' | 'motion60' | 'hires' | 'ultra'
+// CamFacing: which camera a phone uses ('user' = front/selfie, 'environment' = rear).
+export type CamFacing = 'user' | 'environment'
 
 export interface AVPrefs {
   micTier: MicTier
   camPreset: CamPreset
+  camFacing: CamFacing
   screenPreset: ScreenPreset
   // highPass cuts rumble and handling noise from your mic.
   highPass: boolean
@@ -37,6 +40,7 @@ export function isLowPower(): boolean {
 const DEFAULTS: AVPrefs = {
   micTier: 'balanced',
   camPreset: isLowPower() ? '360p' : '720p',
+  camFacing: 'user',
   // Smooth motion (30 fps) is what a plain browser screen share does; the
   // 10 fps sharp-text preset is an opt-in for slides and code.
   screenPreset: 'motion',
@@ -64,6 +68,7 @@ export const usePrefs = create<AVPrefs & { set: (p: Partial<AVPrefs>) => void }>
     const next: AVPrefs = {
       micTier: p.micTier ?? get().micTier,
       camPreset: p.camPreset ?? get().camPreset,
+      camFacing: p.camFacing ?? get().camFacing,
       screenPreset: p.screenPreset ?? get().screenPreset,
       highPass: p.highPass ?? get().highPass,
       voiceIsolation: p.voiceIsolation ?? get().voiceIsolation,

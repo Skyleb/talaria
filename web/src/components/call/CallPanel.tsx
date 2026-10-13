@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown, Ear, EarOff, Expand, Grid2x2, Headphones, ListMusic, Maximize2, Mic, MicOff, Monitor, MonitorOff,
-  Phone, PhoneOff, SlidersHorizontal, Video, VideoOff, Volume2, VolumeX,
+  Phone, PhoneOff, SlidersHorizontal, SwitchCamera, Video, VideoOff, Volume2, VolumeX,
 } from 'lucide-react'
 import { useCall, type RemoteFeed, type StreamQuality } from '../../call'
 import { useListen } from '../../listen'
 import { mixer } from '../../audio/mixer'
-import { usePrefs, type AVPrefs } from '../../prefs'
+import { isMobile, usePrefs, type AVPrefs } from '../../prefs'
 import { MIC_TIERS, CAM_PRESETS, SCREEN_PRESETS } from '../../media/encodings'
 import { displayName, dmTitle, useApp } from '../../store'
 import { Avatar } from '../Avatar'
@@ -164,6 +164,9 @@ function useTiles(channelId: string): Tile[] {
   const localScreen = useCall((s) => s.localScreenStream)
   const selfMuted = useCall((s) => s.muted)
   const speaking = useCall((s) => s.speaking)
+  // The selfie camera is mirrored like a mirror; the rear camera shows the
+  // world the right way round.
+  const mirrorSelf = usePrefs((s) => s.camFacing) !== 'environment'
   const listening = useListen((s) => !!s.sessions[channelId]?.session)
   const users = useApp((s) => s.users)
   const me = useApp((s) => s.me)
@@ -196,12 +199,12 @@ function useTiles(channelId: string): Tile[] {
     }
     if (localScreen) tiles.push({ key: 'local-screen', stream: localScreen, self: true, label: 'Your screen' })
     if (localCam) {
-      tiles.push({ key: 'local-cam', stream: localCam, mirror: true, self: true, label: 'You', muted: selfMuted, speaking: !!speaking.me })
+      tiles.push({ key: 'local-cam', stream: localCam, mirror: mirrorSelf, self: true, label: 'You', muted: selfMuted, speaking: !!speaking.me })
     } else if (me) {
       tiles.push({ key: `avatar-${me.id}`, userId: me.id, self: true, label: 'You', muted: selfMuted, speaking: !!speaking.me })
     }
     return tiles
-  }, [participants, remoteFeeds, localCam, localScreen, selfMuted, speaking, listening, users, me])
+  }, [participants, remoteFeeds, localCam, localScreen, selfMuted, speaking, listening, users, me, mirrorSelf])
 }
 
 // useMixerState polls the audio context so the "tap to hear" prompt can
@@ -553,8 +556,10 @@ function Controls({ onListen, listening, queueOpen }: { onListen: () => void; li
   const deafened = useCall((s) => s.deafened)
   const cameraOn = useCall((s) => s.cameraOn)
   const sharing = useCall((s) => s.sharing)
-  const { toggleMute, toggleDeafen, toggleCamera, toggleScreen, leave } = useCall.getState()
+  const facing = usePrefs((s) => s.camFacing)
+  const { toggleMute, toggleDeafen, toggleCamera, flipCamera, toggleScreen, leave } = useCall.getState()
   const canCapture = !!navigator.mediaDevices?.getUserMedia
+  const canFlip = useHasSeveralCameras(cameraOn)
   return (
     <div className="flex items-center justify-center gap-2">
       <CtlBtn title={muted ? 'Unmute' : 'Mute'} active={!muted} onClick={toggleMute} disabled={!canCapture}>
@@ -566,6 +571,11 @@ function Controls({ onListen, listening, queueOpen }: { onListen: () => void; li
       <CtlBtn title={cameraOn ? 'Turn camera off' : 'Turn camera on'} active={cameraOn} onClick={toggleCamera} disabled={!canCapture}>
         {cameraOn ? <Video size={18} /> : <VideoOff size={18} />}
       </CtlBtn>
+      {cameraOn && canFlip && (
+        <CtlBtn title={facing === 'environment' ? 'Switch to the front camera' : 'Switch to the rear camera'} active onClick={flipCamera}>
+          <SwitchCamera size={18} />
+        </CtlBtn>
+      )}
       <CtlBtn
         title={sharing ? 'Stop sharing' : 'Share your screen'}
         active={sharing}
@@ -587,6 +597,27 @@ function Controls({ onListen, listening, queueOpen }: { onListen: () => void; li
       </button>
     </div>
   )
+}
+
+// useHasSeveralCameras: whether a flip button makes sense. Phones always get
+// one (they have a front and a rear camera even when enumeration hides
+// labels before permission); elsewhere only when more than one camera is
+// attached. Re-checked when the camera turns on, since permission is what
+// makes device labels and counts reliable.
+function useHasSeveralCameras(cameraOn: boolean): boolean {
+  const [several, setSeveral] = useState(isMobile())
+  useEffect(() => {
+    if (isMobile() || !cameraOn || !navigator.mediaDevices?.enumerateDevices) return
+    let live = true
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((devs) => live && setSeveral(devs.filter((d) => d.kind === 'videoinput').length > 1))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [cameraOn])
+  return several
 }
 
 // QualityButton: in-call access to the microphone tier and (Phase 4) the

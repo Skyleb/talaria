@@ -7,7 +7,7 @@ import { create } from 'zustand'
 import { sendCommand } from './gateway'
 import { mixer } from './audio/mixer'
 import { createMicChain, type MicChain } from './audio/mic'
-import { usePrefs, isLowPower, type MicTier } from './prefs'
+import { usePrefs, isLowPower, type CamFacing, type MicTier } from './prefs'
 import { MIC_TIERS, SCREEN_PRESETS, micConstraints, mungeOpusFmtp, camConstraints, camLadder, screenConstraints, screenLadder, preferVP8 } from './media/encodings'
 
 export interface CallParticipant {
@@ -54,6 +54,8 @@ interface CallState {
   toggleMute: () => void
   toggleDeafen: () => void
   toggleCamera: () => Promise<void>
+  // flipCamera switches between the front and rear camera mid-call.
+  flipCamera: () => Promise<void>
   toggleScreen: () => Promise<void>
   setMinimized: (v: boolean) => void
   dismissRing: () => void
@@ -553,7 +555,7 @@ export const useCall = create<CallState>((set, get) => ({
     }
     try {
       const prefs = usePrefs.getState()
-      const stream = await navigator.mediaDevices.getUserMedia({ video: camConstraints(prefs.camPreset) })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: camConstraints(prefs.camPreset, prefs.camFacing) })
       const pc = ensurePubPC()
       watchConnection(pc)
       streamMeta[stream.id] = 'cam'
@@ -572,6 +574,40 @@ export const useCall = create<CallState>((set, get) => ({
     } catch (err: any) {
       set({ mediaError: err?.message ?? 'Camera unavailable' })
     }
+  },
+
+  flipCamera: async () => {
+    const stream = get().localCamStream
+    if (!stream || !pubPC) return
+    const old = stream.getVideoTracks()[0]
+    const sender = pubPC.getSenders().find((s) => s.track === old)
+    if (!old || !sender) return
+    const prefs = usePrefs.getState()
+    const facing: CamFacing = prefs.camFacing === 'user' ? 'environment' : 'user'
+    let fresh: MediaStream
+    try {
+      // Ask for that camera specifically; if the device has no such camera
+      // (a laptop), take whatever it offers rather than failing.
+      fresh = await navigator.mediaDevices
+        .getUserMedia({ video: camConstraints(prefs.camPreset, facing, true) })
+        .catch(() => navigator.mediaDevices.getUserMedia({ video: camConstraints(prefs.camPreset, facing) }))
+    } catch (err: any) {
+      set({ mediaError: err?.message ?? 'Could not switch camera' })
+      return
+    }
+    const track = fresh.getVideoTracks()[0]
+    if (!track) return
+    // Swap the track inside the same MediaStream so the stream id (which
+    // the server maps to "cam") and the local tile's element stay put. The
+    // sender keeps its simulcast encodings; no renegotiation.
+    await sender.replaceTrack(track).catch(() => {})
+    stream.removeTrack(old)
+    stream.addTrack(track)
+    old.stop()
+    // What the camera actually gave us decides the mirror, not what we asked.
+    const got = track.getSettings().facingMode
+    prefs.set({ camFacing: got === 'environment' || got === 'user' ? got : facing })
+    set({ localCamStream: stream })
   },
 
   toggleScreen: async () => {

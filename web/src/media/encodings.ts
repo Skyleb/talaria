@@ -4,7 +4,7 @@
 // should use (set by rewriting the fmtp line in the server's answer, which is
 // where Chrome's encoder reads them), and a sender bitrate cap. Camera and
 // screen ladders describe the simulcast layers (Phase 4).
-import type { CamPreset, MicTier, ScreenPreset } from '../prefs'
+import type { CamFacing, CamPreset, MicTier, ScreenPreset } from '../prefs'
 import { voiceConstraints } from '../audio/mic'
 
 export interface MicTierSpec {
@@ -105,9 +105,18 @@ export const CAM_PRESETS: Record<CamPreset, CamPresetSpec> = {
   '2160p': { label: '4K · 30 fps', width: 3840, height: 2160, fps: 30, kbps: 12000, heavy: true },
 }
 
-export function camConstraints(p: CamPreset): MediaTrackConstraints {
+// camConstraints: size and rate for the preset plus which camera to open.
+// facingMode is a wish (ideal) so a laptop with one webcam still opens it;
+// exact=true demands that camera, used when flipping so a phone does not
+// hand back the one already in use.
+export function camConstraints(p: CamPreset, facing: CamFacing, exact = false): MediaTrackConstraints {
   const s = CAM_PRESETS[p]
-  return { width: { ideal: s.width }, height: { ideal: s.height }, frameRate: { ideal: s.fps, max: s.fps } }
+  return {
+    width: { ideal: s.width },
+    height: { ideal: s.height },
+    frameRate: { ideal: s.fps, max: s.fps },
+    facingMode: exact ? { exact: facing } : { ideal: facing },
+  }
 }
 
 // camLadder: simulcast encodings, lowest first (rids q, h, f). Low-power
