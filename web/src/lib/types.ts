@@ -73,6 +73,7 @@ export interface Message {
   kind: 'default' | 'system'
   content: string
   reply_to_id?: string
+  mention_ids?: string[]
   created_at: number
   edited_at?: number
   deleted_at?: number
@@ -117,6 +118,7 @@ export interface ReadyPayload {
   read_states: ReadState[]
   latest_message_ids: Record<string, string>
   online_user_ids: string[] | null
+  muted_channel_ids?: string[]
   users: Record<string, User>
 }
 

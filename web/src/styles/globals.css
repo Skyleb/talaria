@@ -110,3 +110,12 @@ body, header, nav, main, aside, section, button, input, select, textarea {
   scrollbar-width: thin;
   scrollbar-color: var(--bg-3) transparent;
 }
+
+/* @mentions */
+.md .mention {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 600;
+}

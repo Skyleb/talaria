@@ -127,9 +127,11 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	memberIDs, _ := s.Store.ChannelMemberIDs(r.Context(), ch)
 	m := &model.Message{
 		ChannelID: ch.ID, AuthorID: me.ID, Kind: model.MessageDefault,
 		Content: content, ReplyToID: req.ReplyToID,
+		MentionIDs: s.resolveMentions(r.Context(), content, memberIDs),
 	}
 	if err := s.Store.CreateMessage(r.Context(), m, req.AttachmentIDs); err != nil {
 		badRequest(w, "one or more attachments are invalid")
@@ -154,6 +156,7 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.Hub.PublishToChannel(r.Context(), ch, gateway.EvtMessageCreate, map[string]any{"message": full})
+	s.notifyMessage(ch, full, me, memberIDs)
 	writeJSON(w, 201, map[string]any{"message": full})
 }
 

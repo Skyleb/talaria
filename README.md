@@ -14,6 +14,16 @@ roadmap below.
    wizard at `http://localhost:8080`.
 3. Create your admin account, then share an invite link with friends.
 
+## Notifications and the installable app
+
+Talaria is an installable web app: on Android and desktop Chrome/Edge use
+**Settings → Notifications → Install Talaria**, on iPhone/iPad use Share →
+**Add to Home Screen**. Then turn on notifications in the same Settings card
+to get a heads-up for direct messages, `@mentions`, and incoming calls even
+when the app is closed. Push is delivered straight from your server to the
+browser (Web Push with VAPID keys generated on first run); no third-party
+service is involved. Mute any chat with the bell icon in its header.
+
 Everything lives next to the binary: `talaria.toml` (config) and `data/`
 (database + uploaded files). Move the folder, and your server moves with it.
 All server settings are editable in the app under **Settings → Admin — server
@@ -99,6 +109,9 @@ documented in `docs/protocol.md`.
 - **Phase 1 (done)** — accounts, friends, groups, invites, realtime text chat,
   replies, typing, read states, file uploads with inline image/video/audio
   playback, profiles/avatars, light+dark mobile-first UI, auto-HTTPS for DDNS.
+- **Daily-driver pass (done)** — installable PWA, Web Push notifications for
+  DMs/@mentions/calls, @mention autocomplete and highlighting, per-chat mute,
+  unread count in the tab title and app badge, group DMs, profile cards.
 - **Phase 2 (done)** — voice & video calls + screen share through a WebRTC SFU
   embedded in the same binary (Pion). Every participant uploads once; all call
   media shares **one UDP port (50000)** — forward it on your router for remote

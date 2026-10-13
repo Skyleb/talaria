@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
-import { Hash, Menu, Moon, Phone, PhoneOff, Plus, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
+import { BellOff, Hash, Menu, Moon, Phone, PhoneOff, Plus, Settings, Sun, Trash2, Users, UserPlus, Volume2, X, LogOut } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
+import { setAppBadge, syncPush } from '../lib/notifications'
 import { dmOther, dmTitle, displayName, useApp } from '../store'
 import { useCall } from '../call'
 import { Avatar } from '../components/Avatar'
@@ -19,9 +20,21 @@ export default function AppShell() {
   const gatewayStatus = useApp((s) => s.gatewayStatus)
   const [leftOpen, setLeftOpen] = useState(false)
   const location = useLocation()
+  const unreadTotal = useApp(selectUnreadTotal)
 
   // Close the drawer on navigation (mobile).
   useEffect(() => setLeftOpen(false), [location.pathname])
+
+  // Unread count in the tab title and on the installed app's icon.
+  useEffect(() => {
+    document.title = unreadTotal > 0 ? `(${unreadTotal}) Talaria` : 'Talaria'
+    setAppBadge(unreadTotal)
+  }, [unreadTotal])
+
+  // Re-attribute this device's push subscription to the signed-in account.
+  useEffect(() => {
+    syncPush()
+  }, [])
 
   return (
     <div className="flex h-dvh overflow-hidden bg-bg-0">
@@ -60,6 +73,17 @@ export default function AppShell() {
       <UserProfileModal />
     </div>
   )
+}
+
+// selectUnreadTotal counts channels with unseen messages, skipping muted ones.
+function selectUnreadTotal(s: { latestIds: Record<string, string>; readStates: Record<string, string>; mutedChannelIds: Record<string, true> }): number {
+  let n = 0
+  for (const [cid, latest] of Object.entries(s.latestIds)) {
+    if (s.mutedChannelIds[cid]) continue
+    const read = s.readStates[cid]
+    if (!read || read < latest) n++
+  }
+  return n
 }
 
 function GroupRedirect() {
@@ -106,6 +130,7 @@ function GroupRail() {
   const groupChannelIds = useApp((s) => s.groupChannelIds)
   const latestIds = useApp((s) => s.latestIds)
   const readStates = useApp((s) => s.readStates)
+  const muted = useApp((s) => s.mutedChannelIds)
   const { groupId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -121,7 +146,7 @@ function GroupRail() {
   function groupUnread(g: Group): boolean {
     return (groupChannelIds[g.id] ?? []).some((cid) => {
       const latest = latestIds[cid]
-      return latest && (!readStates[cid] || readStates[cid] < latest)
+      return !muted[cid] && latest && (!readStates[cid] || readStates[cid] < latest)
     })
   }
 
@@ -249,6 +274,7 @@ function GroupChannelList({ groupId }: { groupId: string }) {
   const members = useApp((s) => s.groupMembers[groupId])
   const latestIds = useApp((s) => s.latestIds)
   const readStates = useApp((s) => s.readStates)
+  const muted = useApp((s) => s.mutedChannelIds)
   const calls = useCall((s) => s.calls)
   const { channelId } = useParams()
   const navigate = useNavigate()
@@ -286,7 +312,7 @@ function GroupChannelList({ groupId }: { groupId: string }) {
           const c = channels[cid]
           if (!c) return null
           const latest = latestIds[cid]
-          const unread = latest && (!readStates[cid] || readStates[cid] < latest)
+          const unread = !muted[cid] && latest && (!readStates[cid] || readStates[cid] < latest)
           const inCall = (calls[cid]?.length ?? 0) > 0
           return (
             <button
@@ -301,6 +327,7 @@ function GroupChannelList({ groupId }: { groupId: string }) {
               <Hash size={16} className="shrink-0 opacity-60" />
               <span className="truncate">{c.name}</span>
               <span className="ml-auto flex items-center gap-1.5">
+                {muted[cid] && <BellOff size={12} className="text-ink-2" />}
                 {inCall && <Volume2 size={14} className="text-success" />}
                 {unread && channelId !== cid && <span className="h-2 w-2 rounded-full bg-accent" />}
               </span>
@@ -515,6 +542,7 @@ function DMList() {
   const me = useApp((s) => s.me)
   const latestIds = useApp((s) => s.latestIds)
   const readStates = useApp((s) => s.readStates)
+  const muted = useApp((s) => s.mutedChannelIds)
   const calls = useCall((s) => s.calls)
   const { channelId } = useParams()
   const navigate = useNavigate()
@@ -555,7 +583,7 @@ function DMList() {
           const other = dmOther(c, me.id)
           const otherUser = other ? users[other.id] ?? other : undefined
           const latest = latestIds[cid]
-          const unread = latest && (!readStates[cid] || readStates[cid] < latest)
+          const unread = !muted[cid] && latest && (!readStates[cid] || readStates[cid] < latest)
           return (
             <button
               key={cid}
@@ -575,6 +603,7 @@ function DMList() {
               )}
               <span className="truncate">{dmTitle(c, me.id, users)}</span>
               <span className="ml-auto flex items-center gap-1.5">
+                {muted[cid] && <BellOff size={12} className="text-ink-2" />}
                 {(calls[cid]?.length ?? 0) > 0 && <Volume2 size={14} className="text-success" />}
                 {unread && channelId !== cid && <span className="h-2 w-2 rounded-full bg-accent" />}
               </span>

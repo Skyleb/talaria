@@ -37,6 +37,15 @@ type Manager struct {
 	mu       sync.Mutex
 	rooms    map[string]*Room // channelID -> room
 	userRoom map[string]*Room // userID -> the one room they're in
+
+	// ring, when set, is told about DM calls so offline users can be
+	// notified (push) in addition to the gateway call.ring event.
+	ring func(channelID, fromUserID string, toUserIDs []string)
+}
+
+// SetRingNotifier installs an out-of-band notifier for incoming DM calls.
+func (m *Manager) SetRingNotifier(fn func(channelID, fromUserID string, toUserIDs []string)) {
+	m.ring = fn
 }
 
 func NewManager(st *store.Store, pub Publisher, log *slog.Logger, udpPort int, publicIP string) (*Manager, error) {
@@ -226,12 +235,17 @@ func (m *Manager) Join(ctx context.Context, userID, channelID string) error {
 	// Ring the other side of a DM when a call starts there.
 	if created && ch.Kind == model.ChannelDM {
 		if ids, err := m.store.DMParticipantIDs(ctx, ch.ID); err == nil {
+			var others []string
 			for _, id := range ids {
 				if id != userID {
+					others = append(others, id)
 					m.sendToUser(id, EvtCallRing, map[string]any{
 						"channel_id": ch.ID, "from_user_id": userID,
 					})
 				}
+			}
+			if m.ring != nil && len(others) > 0 {
+				m.ring(ch.ID, userID, others)
 			}
 		}
 	}

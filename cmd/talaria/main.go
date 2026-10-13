@@ -26,6 +26,7 @@ import (
 	"github.com/skyle/talaria/internal/gateway"
 	"github.com/skyle/talaria/internal/lanaccess"
 	"github.com/skyle/talaria/internal/landns"
+	"github.com/skyle/talaria/internal/push"
 	"github.com/skyle/talaria/internal/rtc"
 	"github.com/skyle/talaria/internal/store"
 	"github.com/skyle/talaria/internal/tlsx"
@@ -132,6 +133,16 @@ func main() {
 	}
 	srv.StartAttachmentGC()
 	startSessionGC(st, log)
+
+	// Web Push: VAPID keys live in the database, generated on first run.
+	if sender, err := push.New(context.Background(), st, log, pushContact(cfg)); err != nil {
+		log.Error("web push disabled", "err", err)
+	} else {
+		srv.Push = sender
+		if sfu != nil {
+			sfu.SetRingNotifier(srv.NotifyRing)
+		}
+	}
 
 	// Built-in dynamic-DNS updater: keeps the hostname pointed at this
 	// connection without a separate updater client. The runner lets the
@@ -352,4 +363,16 @@ func openBrowser(url string) {
 	default:
 		exec.Command("xdg-open", url).Start()
 	}
+}
+
+// pushContact is the VAPID subject push services may use to reach the
+// operator: the ACME email when set, else the server's own https URL.
+func pushContact(cfg *config.Config) string {
+	if cfg.TLS.ACMEEmail != "" {
+		return "mailto:" + cfg.TLS.ACMEEmail
+	}
+	if cfg.TLS.Domain != "" {
+		return "https://" + cfg.TLS.Domain
+	}
+	return ""
 }

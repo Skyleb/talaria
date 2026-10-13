@@ -27,9 +27,15 @@ export function MessageItem({
 
   const author = users[m.author_id] ?? m.author
   const mine = m.author_id === me?.id
+  const mentionsMe = !!me && (m.mention_ids ?? []).includes(me.id)
+  const mentionNames = useMemo(() => {
+    const names: Record<string, string> = {}
+    for (const u of Object.values(users)) names[u.username.toLowerCase()] = u.display_name || u.username
+    return names
+  }, [users])
   const html = useMemo(
-    () => (m.deleted_at ? '' : renderMarkdown(m.content)),
-    [m.content, m.deleted_at],
+    () => (m.deleted_at ? '' : renderMarkdown(m.content, mentionNames)),
+    [m.content, m.deleted_at, mentionNames],
   )
 
   async function saveEdit() {
@@ -60,6 +66,7 @@ export function MessageItem({
         !grouped && 'mt-2.5',
         m.pending && 'opacity-60',
         m.failed && 'opacity-60 outline outline-1 outline-danger',
+        mentionsMe && 'border-l-2 border-accent bg-accent/10 hover:bg-accent/15',
       )}
       onTouchStart={() => {}}
       onContextMenu={(e) => {

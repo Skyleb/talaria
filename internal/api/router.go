@@ -61,6 +61,12 @@ func (s *Server) Router() http.Handler {
 	authed.HandleFunc("DELETE /api/v1/messages/{id}", s.handleDeleteMessage)
 
 	authed.HandleFunc("POST /api/v1/dms", s.handleOpenDM)
+	authed.HandleFunc("PUT /api/v1/channels/{id}/mute", s.handleMuteChannel)
+	authed.HandleFunc("DELETE /api/v1/channels/{id}/mute", s.handleUnmuteChannel)
+	authed.HandleFunc("GET /api/v1/push/vapid", s.handlePushVAPID)
+	authed.HandleFunc("GET /api/v1/push/status", s.handlePushStatus)
+	authed.HandleFunc("POST /api/v1/push/subscriptions", s.handlePushSubscribe)
+	authed.HandleFunc("DELETE /api/v1/push/subscriptions", s.handlePushUnsubscribe)
 	authed.HandleFunc("POST /api/v1/channels/{id}/participants", s.handleAddDMParticipant)
 	authed.HandleFunc("DELETE /api/v1/channels/{id}/participants/me", s.handleLeaveDM)
 

@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link2, Moon, Monitor, Sun } from 'lucide-react'
+import { Bell, BellOff, Download, Link2, Moon, Monitor, Sun } from 'lucide-react'
 import { api, uploadFile } from '../lib/api'
 import { useApp } from '../store'
 import { PALETTES } from '../lib/palettes'
+import {
+  canInstall, disablePush, enablePush, isStandalone, onInstallChange, promptInstall, pushState,
+  type PushState,
+} from '../lib/notifications'
 import { Avatar } from '../components/Avatar'
 import { InviteLinkShare } from '../components/InviteLink'
 import { Button, cx, ErrorText, Input, Label, Segmented, Select } from '../components/ui'
@@ -17,6 +21,7 @@ export default function SettingsPage({ onMenu }: { onMenu: () => void }) {
       <PageHeader onMenu={onMenu} title="Settings" />
       <div className="flex-1 space-y-8 overflow-y-auto p-4 pb-16">
         <ProfileSection />
+        <NotificationsSection />
         <AppearanceSection />
         <PasswordSection />
         <SessionsSection />
@@ -173,6 +178,90 @@ function AppearanceSection() {
           </div>
         </div>
       </div>
+    </Card>
+  )
+}
+
+function NotificationsSection() {
+  const [state, setState] = useState<PushState | null>(null)
+  const [devices, setDevices] = useState(0)
+  const [installable, setInstallable] = useState(canInstall())
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const refresh = () => {
+    pushState().then(setState)
+    api.get<{ devices: number }>('/api/v1/push/status').then((r) => setDevices(r.devices)).catch(() => {})
+  }
+  useEffect(() => {
+    refresh()
+    return onInstallChange(() => setInstallable(canInstall()))
+  }, [])
+
+  async function turnOn() {
+    setBusy(true)
+    setErr('')
+    const res = await enablePush().catch((e: any) => ({ ok: false, reason: e?.message ?? 'Something went wrong' }))
+    if (!res.ok) setErr(res.reason ?? 'Could not turn on notifications')
+    setBusy(false)
+    refresh()
+  }
+
+  async function turnOff() {
+    setBusy(true)
+    await disablePush()
+    setBusy(false)
+    refresh()
+  }
+
+  return (
+    <Card title="Notifications">
+      <p className="mb-3 text-sm text-ink-1">
+        Get a heads-up for direct messages, @mentions, and incoming calls, even when Talaria is closed.
+      </p>
+      {state === 'enabled' && (
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 text-sm text-success">
+            <Bell size={15} /> On for this device
+          </span>
+          <Button variant="ghost" className="px-3 py-1.5 text-xs" onClick={turnOff} disabled={busy}>
+            <BellOff size={14} /> Turn off
+          </Button>
+        </div>
+      )}
+      {state === 'off' && (
+        <Button onClick={turnOn} disabled={busy}>
+          <Bell size={16} /> Turn on notifications
+        </Button>
+      )}
+      {state === 'denied' && (
+        <p className="text-sm text-warning">
+          Notifications are blocked for this site. Allow them in your browser's site settings, then come back here.
+        </p>
+      )}
+      {state === 'ios-needs-install' && (
+        <p className="text-sm text-ink-1">
+          On iPhone and iPad, notifications only work once Talaria is on your Home Screen: tap <strong>Share</strong>, then{' '}
+          <strong>Add to Home Screen</strong>, open Talaria from there, and turn notifications on.
+        </p>
+      )}
+      {state === 'unsupported' && (
+        <p className="text-sm text-ink-2">This browser doesn't support notifications.</p>
+      )}
+      {devices > 0 && (
+        <p className="mt-2 text-xs text-ink-2">
+          On for {devices} {devices === 1 ? 'device' : 'devices'} on your account.
+        </p>
+      )}
+      <ErrorText>{err}</ErrorText>
+      {installable && !isStandalone() && (
+        <div className="mt-4 border-t border-edge pt-3">
+          <Button variant="ghost" className="px-3 py-1.5 text-sm" onClick={promptInstall}>
+            <Download size={15} /> Install Talaria on this device
+          </Button>
+          <p className="mt-1 text-xs text-ink-2">Gets its own icon and window, like a regular app.</p>
+        </div>
+      )}
     </Card>
   )
 }

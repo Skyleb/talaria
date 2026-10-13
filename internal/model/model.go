@@ -109,6 +109,8 @@ type Message struct {
 	Kind      string       `json:"kind"`
 	Content   string       `json:"content"`
 	ReplyToID string       `json:"reply_to_id,omitempty"`
+	// MentionIDs lists users @mentioned in Content (channel members only).
+	MentionIDs []string    `json:"mention_ids,omitempty"`
 	CreatedAt int64        `json:"created_at"`
 	EditedAt  int64        `json:"edited_at,omitempty"`
 	DeletedAt int64        `json:"deleted_at,omitempty"`
@@ -156,6 +158,16 @@ type Invite struct {
 	UseCount  int64  `json:"use_count"`
 	ExpiresAt int64  `json:"expires_at,omitempty"` // 0 = never
 	RevokedAt int64  `json:"revoked_at,omitempty"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+type PushSubscription struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	Endpoint  string `json:"endpoint"`
+	P256dh    string `json:"p256dh"`
+	Auth      string `json:"auth"`
+	UserAgent string `json:"user_agent"`
 	CreatedAt int64  `json:"created_at"`
 }
 

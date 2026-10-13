@@ -4,6 +4,7 @@ package web
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -11,6 +12,11 @@ import (
 
 //go:embed all:dist
 var distFS embed.FS
+
+func init() {
+	// Go's built-in table lacks the PWA manifest type; browsers warn on text/plain.
+	mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 // SPAHandler serves embedded static files, falling back to index.html for
 // client-side routes. /api, /files, /avatars are mounted before this.

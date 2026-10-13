@@ -36,12 +36,14 @@ interface AppState {
   palette: string
   // profileUserId drives the global user profile card (open from anywhere).
   profileUserId: string | null
+  mutedChannelIds: Record<string, true>
 
   // actions
   setTheme: (t: Theme) => void
   setPalette: (p: string) => void
   openProfile: (userId: string) => void
   closeProfile: () => void
+  setMuted: (channelId: string, muted: boolean) => void
   setMe: (u: User | null) => void
   setGatewayStatus: (s: GatewayStatus) => void
   applyReady: (p: ReadyPayload) => void
@@ -87,9 +89,17 @@ export const useApp = create<AppState>((set, get) => ({
   theme: (localStorage.getItem('talaria-theme') as Theme) || 'system',
   palette: localStorage.getItem('talaria-palette') || DEFAULT_PALETTE,
   profileUserId: null,
+  mutedChannelIds: {},
 
   openProfile: (userId) => set({ profileUserId: userId }),
   closeProfile: () => set({ profileUserId: null }),
+  setMuted: (channelId, muted) =>
+    set((s) => {
+      const mutedChannelIds = { ...s.mutedChannelIds }
+      if (muted) mutedChannelIds[channelId] = true
+      else delete mutedChannelIds[channelId]
+      return { mutedChannelIds }
+    }),
 
   setTheme: (t) => {
     localStorage.setItem('talaria-theme', t)
@@ -129,6 +139,8 @@ export const useApp = create<AppState>((set, get) => ({
     }
     const online: Record<string, true> = {}
     for (const id of p.online_user_ids ?? []) online[id] = true
+    const mutedChannelIds: Record<string, true> = {}
+    for (const id of p.muted_channel_ids ?? []) mutedChannelIds[id] = true
     set({
       me: p.user,
       authChecked: true,
@@ -143,6 +155,7 @@ export const useApp = create<AppState>((set, get) => ({
       readStates,
       latestIds: p.latest_message_ids ?? {},
       online,
+      mutedChannelIds,
       // Keep already-loaded messages across resumes; a 'reset' clears elsewhere.
     })
   },

@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { CornerUpLeft, Paperclip, SendHorizontal, X } from 'lucide-react'
 import { uploadFile } from '../../lib/api'
 import { sendTyping } from '../../gateway'
 import { displayName, useApp } from '../../store'
+import { Avatar } from '../Avatar'
 import { cx } from '../ui'
 import type { Attachment, Message } from '../../lib/types'
 
@@ -45,7 +46,31 @@ export function Composer({
 }) {
   const sendMessage = useApp((s) => s.sendMessage)
   const users = useApp((s) => s.users)
+  const me = useApp((s) => s.me)
+  const channel = useApp((s) => s.channels[channelId])
+  const groupMembers = useApp((s) => (channel?.group_id ? s.groupMembers[channel.group_id] : undefined))
   const [text, setText] = useState('')
+  // @mention autocomplete: the token being typed and the highlighted row.
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null)
+  const [mentionSel, setMentionSel] = useState(0)
+
+  const memberIds = useMemo(
+    () =>
+      channel?.kind === 'dm'
+        ? (channel.participants ?? []).map((p) => p.id)
+        : (groupMembers ?? []).map((m) => m.user_id),
+    [channel, groupMembers],
+  )
+  const suggestions = useMemo(() => {
+    if (!mention) return []
+    const q = mention.query.toLowerCase()
+    return memberIds
+      .filter((id) => id !== me?.id)
+      .map((id) => users[id])
+      .filter((u): u is NonNullable<typeof u> => !!u)
+      .filter((u) => u.username.toLowerCase().startsWith(q) || (u.display_name ?? '').toLowerCase().startsWith(q))
+      .slice(0, 6)
+  }, [mention, memberIds, users, me])
   const [uploads, setUploads] = useState<PendingUpload[]>([])
   const [sending, setSending] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -59,9 +84,38 @@ export function Composer({
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }
 
+  // Look back from the caret for an @token with no whitespace in it.
+  function detectMention(v: string) {
+    const caret = textareaRef.current?.selectionStart ?? v.length
+    const m = /(^|\s)@([a-z0-9_.]*)$/i.exec(v.slice(0, caret))
+    if (m) {
+      setMention({ query: m[2], start: caret - m[2].length - 1 })
+      setMentionSel(0)
+    } else {
+      setMention(null)
+    }
+  }
+
+  function pickMention(username: string) {
+    if (!mention) return
+    const el = textareaRef.current
+    const caret = el?.selectionStart ?? text.length
+    const next = text.slice(0, mention.start) + '@' + username + ' ' + text.slice(caret)
+    setText(next)
+    setMention(null)
+    requestAnimationFrame(() => {
+      if (!el) return
+      const pos = mention.start + username.length + 2
+      el.focus()
+      el.setSelectionRange(pos, pos)
+      autogrow()
+    })
+  }
+
   function onType(v: string) {
     setText(v)
     autogrow()
+    detectMention(v)
     const now = Date.now()
     if (v.trim() && now - lastTyping.current > 8000) {
       lastTyping.current = now
@@ -109,7 +163,26 @@ export function Composer({
   }
 
   return (
-    <div className="shrink-0 px-2 pb-2 sm:px-4 sm:pb-4">
+    <div className="relative shrink-0 px-2 pb-2 sm:px-4 sm:pb-4">
+      {mention && suggestions.length > 0 && (
+        <div className="absolute bottom-full left-2 right-2 z-20 mb-1 overflow-hidden rounded-xl border border-edge bg-bg-1 shadow-lg sm:left-4 sm:w-72 sm:right-auto">
+          {suggestions.map((u, i) => (
+            <button
+              key={u.id}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pickMention(u.username)}
+              className={cx(
+                'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
+                i === mentionSel ? 'bg-accent/15 text-ink' : 'text-ink-1 hover:bg-bg-3',
+              )}
+            >
+              <Avatar user={u} size={24} />
+              <span className="font-medium">{u.display_name || u.username}</span>
+              <span className="text-xs text-ink-2">@{u.username}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {replyTo && (
         <div className="flex items-center gap-2 rounded-t-lg border border-b-0 border-edge bg-bg-2 px-3 py-1.5 text-xs text-ink-1">
           <CornerUpLeft size={13} />
@@ -178,11 +251,34 @@ export function Composer({
           className="max-h-40 flex-1 resize-none bg-transparent px-1 py-2 text-[0.925rem] text-ink placeholder:text-ink-2 focus:outline-none"
           onChange={(e) => onType(e.target.value)}
           onKeyDown={(e) => {
+            if (mention && suggestions.length) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setMentionSel((i) => (i + 1) % suggestions.length)
+                return
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setMentionSel((i) => (i - 1 + suggestions.length) % suggestions.length)
+                return
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault()
+                pickMention(suggestions[mentionSel].username)
+                return
+              }
+              if (e.key === 'Escape') {
+                setMention(null)
+                return
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               submit()
             }
           }}
+          onClick={() => detectMention(text)}
+          onBlur={() => setTimeout(() => setMention(null), 150)}
           onPaste={(e) => {
             const files = Array.from(e.clipboardData.files)
             if (files.length) {

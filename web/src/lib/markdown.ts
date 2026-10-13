@@ -25,13 +25,25 @@ marked.use({
   },
 })
 
-export function renderMarkdown(src: string): string {
-  const html = marked.parse(src, { async: false }) as string
+// renderMarkdown turns chat text into safe HTML. mentions maps lowercase
+// usernames to display names; matching @tokens become highlighted chips.
+export function renderMarkdown(src: string, mentions?: Record<string, string>): string {
+  let html = marked.parse(src, { async: false }) as string
+  if (mentions) {
+    html = html.replace(/(^|[^\w@\/])@([a-z0-9_.]{2,32})/gi, (all, pre: string, name: string) => {
+      const exact = mentions[name.toLowerCase()]
+      const trimmed = name.replace(/\.+$/, '')
+      const display = exact ?? mentions[trimmed.toLowerCase()]
+      if (!display) return all
+      const trail = exact ? '' : name.slice(trimmed.length)
+      return `${pre}<span class="mention">@${display}</span>${trail}`
+    })
+  }
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [
       'p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'blockquote',
-      'ul', 'ol', 'li', 'a',
+      'ul', 'ol', 'li', 'a', 'span',
     ],
-    ALLOWED_ATTR: ['href', 'target', 'rel'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
   })
 }

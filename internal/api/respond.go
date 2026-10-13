@@ -14,6 +14,7 @@ import (
 	"github.com/skyle/talaria/internal/gateway"
 	"github.com/skyle/talaria/internal/lanaccess"
 	"github.com/skyle/talaria/internal/landns"
+	"github.com/skyle/talaria/internal/push"
 	"github.com/skyle/talaria/internal/store"
 )
 
@@ -32,6 +33,8 @@ type Server struct {
 	// LanAccess serves the lan domain (cert + redirect target) for devices
 	// stuck behind broken router NAT loopback.
 	LanAccess *lanaccess.Runner
+	// Push sends Web Push notifications; nil disables them.
+	Push *push.Sender
 
 	// cfgMu serializes admin edits to Config.
 	cfgMu sync.Mutex

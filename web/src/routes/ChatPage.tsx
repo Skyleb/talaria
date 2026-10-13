@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { Hash, LogOut, Pencil, Phone, UserPlus, Users } from 'lucide-react'
+import { Bell, BellOff, Hash, LogOut, Pencil, Phone, UserPlus, Users } from 'lucide-react'
 import { api } from '../lib/api'
 import { dmTitle, displayName, useApp } from '../store'
 import { useCall } from '../call'
@@ -63,6 +63,7 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
           right={
             <>
               <StartCallButton channelId={channelId} />
+              <MuteButton channelId={channelId} />
               {isDM && (
                 <button
                   className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-ink"
@@ -236,6 +237,31 @@ function ChatSettingsModal({ open, onClose, channelId }: { open: boolean; onClos
         </Button>
       </div>
     </Modal>
+  )
+}
+
+// MuteButton silences notifications and unread badges for one channel.
+function MuteButton({ channelId }: { channelId: string }) {
+  const muted = useApp((s) => !!s.mutedChannelIds[channelId])
+  const setMuted = useApp((s) => s.setMuted)
+  async function toggle() {
+    const next = !muted
+    setMuted(channelId, next)
+    try {
+      if (next) await api.put(`/api/v1/channels/${channelId}/mute`, {})
+      else await api.del(`/api/v1/channels/${channelId}/mute`)
+    } catch {
+      setMuted(channelId, !next)
+    }
+  }
+  return (
+    <button
+      className={cx('rounded p-1.5 hover:bg-bg-3', muted ? 'text-ink-2 hover:text-ink' : 'text-ink-1 hover:text-ink')}
+      title={muted ? 'Notifications are off for this chat. Click to turn on' : 'Mute this chat'}
+      onClick={toggle}
+    >
+      {muted ? <BellOff size={18} /> : <Bell size={18} />}
+    </button>
   )
 }
 

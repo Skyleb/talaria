@@ -7,14 +7,18 @@ import (
 	"github.com/skyle/talaria/internal/model"
 )
 
-const msgCols = `id, channel_id, author_id, kind, content, reply_to_id, created_at, edited_at, deleted_at`
+const msgCols = `id, channel_id, author_id, kind, content, reply_to_id, created_at, edited_at, deleted_at, mention_ids`
 
 func scanMessage(row interface{ Scan(...any) error }) (*model.Message, error) {
 	var m model.Message
+	var mentions string
 	err := row.Scan(&m.ID, &m.ChannelID, &m.AuthorID, &m.Kind, &m.Content,
-		nstr{&m.ReplyToID}, &m.CreatedAt, nint{&m.EditedAt}, nint{&m.DeletedAt})
+		nstr{&m.ReplyToID}, &m.CreatedAt, nint{&m.EditedAt}, nint{&m.DeletedAt}, &mentions)
 	if err != nil {
 		return nil, err
+	}
+	if mentions != "" {
+		m.MentionIDs = strings.Split(mentions, ",")
 	}
 	return &m, nil
 }
@@ -30,9 +34,10 @@ func (s *Store) CreateMessage(ctx context.Context, m *model.Message, attachmentI
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `INSERT INTO messages
-		(id, channel_id, author_id, kind, content, reply_to_id, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		m.ID, m.ChannelID, m.AuthorID, m.Kind, m.Content, nullStr(m.ReplyToID), m.CreatedAt); err != nil {
+		(id, channel_id, author_id, kind, content, reply_to_id, created_at, mention_ids)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		m.ID, m.ChannelID, m.AuthorID, m.Kind, m.Content, nullStr(m.ReplyToID), m.CreatedAt,
+		strings.Join(m.MentionIDs, ",")); err != nil {
 		return err
 	}
 	for _, aid := range attachmentIDs {

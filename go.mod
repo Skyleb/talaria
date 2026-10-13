@@ -18,7 +18,9 @@ require (
 )
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
@@ -35,8 +37,10 @@ require (
 	github.com/pion/transport/v5 v5.1.1 // indirect
 	github.com/pion/turn/v5 v5.1.2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
+	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	golang.org/x/image v0.0.0-20191009234506-e7c1f5e7dbb8 // indirect
+	golang.org/x/image v0.0.0-20211028202545-6944b10bf410 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect

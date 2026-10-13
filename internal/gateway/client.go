@@ -194,6 +194,7 @@ type ReadyPayload struct {
 	ReadStates  []*model.ReadState       `json:"read_states"`
 	LatestIDs   map[string]string        `json:"latest_message_ids"`
 	OnlineUsers []string                 `json:"online_user_ids"`
+	MutedChannelIDs []string             `json:"muted_channel_ids"`
 	Users       map[string]model.PublicUser `json:"users"`
 	// ActiveCalls carries call.state payloads for in-progress calls the user
 	// can see, so a fresh client renders them immediately.
@@ -297,9 +298,10 @@ func (h *Hub) buildReady(ctx context.Context, userID string) (*ReadyPayload, err
 			}
 		}
 	}
+	muted, _ := st.MutedChannelIDs(ctx, userID)
 	ready := &ReadyPayload{
 		User: user, Groups: summaries, DMChannels: dms, Friends: friends,
-		ReadStates: reads, LatestIDs: latest,
+		ReadStates: reads, LatestIDs: latest, MutedChannelIDs: muted,
 		OnlineUsers: h.OnlineAmong(idList), Users: users,
 	}
 	if h.call != nil {
