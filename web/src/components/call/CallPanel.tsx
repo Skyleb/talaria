@@ -639,7 +639,7 @@ function QualityButton() {
           <p className="mt-1 text-xs text-ink-2">Camera and screen settings apply the next time you turn them on.</p>
           <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-ink">
             <input type="checkbox" className="accent-[var(--color-accent)]" checked={prefs.voiceIsolation} onChange={(e) => set({ voiceIsolation: e.target.checked })} />
-            Voice isolation (kills room squeal)
+            Voice isolation (neural noise removal: wind, fans, keyboards)
           </label>
           <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-ink">
             <input type="checkbox" className="accent-[var(--color-accent)]" checked={prefs.ducking.enabled} onChange={(e) => set({ ducking: { enabled: e.target.checked } as AVPrefs['ducking'] })} />

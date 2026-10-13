@@ -73,7 +73,13 @@ function dbToGain(db: number): number {
 function getCtx(): AudioContext {
   if (ctx) return ctx
   const AC = window.AudioContext || (window as any).webkitAudioContext
-  ctx = new AC() as AudioContext
+  // 48 kHz: what the RNNoise voice-isolation worklet expects (browsers
+  // resample to the device rate on output).
+  try {
+    ctx = new AC({ sampleRate: 48000 }) as AudioContext
+  } catch {
+    ctx = new AC() as AudioContext
+  }
   master = ctx.createGain()
   master.gain.value = deafened ? 0 : 1
   limiter = ctx.createDynamicsCompressor()

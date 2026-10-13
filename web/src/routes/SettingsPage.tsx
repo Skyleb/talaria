@@ -550,7 +550,7 @@ function VoiceVideoSection() {
             checked={prefs.voiceIsolation}
             onChange={(v) => set({ voiceIsolation: v })}
             label="Voice isolation"
-            hint="Keeps only the speech band and gates silence. Stops the squeal when a phone and a laptop are in the same room; music will sound thin, so turn it off for singing or instruments."
+            hint="Neural noise removal (RNNoise) on your mic: wind, traffic, fans and keyboard clatter mostly disappear and only your voice goes out. Turn it off for singing or instruments."
           />
         </div>
         <div className="space-y-3">
