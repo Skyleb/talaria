@@ -2,6 +2,7 @@
 // estimation (groundwork for Phase 4 synced playback), and store dispatch.
 import { registerReadSender, useApp } from './store'
 import { handleCallEvent, setActiveCalls, useCall } from './call'
+import { handleListenEvent, setActiveListening } from './listen'
 import type {
   Channel, FriendEntry, Friendship, Group, GroupMember, GroupSummary,
   Message, ReadyPayload, User,
@@ -176,11 +177,16 @@ function handleEvent(t: string, d: any) {
     handleCallEvent(t, d)
     return
   }
+  if (t.startsWith('sync.')) {
+    handleListenEvent(t, d)
+    return
+  }
   switch (t) {
     case 'ready':
       st.applyReady(d as ReadyPayload)
       st.setGatewayStatus('online')
       setActiveCalls(d.active_calls ?? [])
+      setActiveListening(d.active_listening ?? [])
       break
 
     case 'message.create': {

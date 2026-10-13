@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Check, Clock, MessageCircle, UserPlus } from 'lucide-react'
+import { Check, Clock, Headphones, MessageCircle, UserPlus } from 'lucide-react'
+import { listeningFor, useListen } from '../listen'
+import { dmTitle } from '../store'
 import { api } from '../lib/api'
 import { useApp } from '../store'
 import { Avatar } from './Avatar'
@@ -19,6 +21,9 @@ export function UserProfileModal() {
   const navigate = useNavigate()
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
+  const sessions = useListen((s) => s.sessions)
+  const channels = useApp((s) => s.channels)
+  const joinListen = useListen((s) => s.join)
 
   const u = userId ? users[userId] : null
   if (!userId || !u || !me) return null
@@ -75,6 +80,34 @@ export function UserProfileModal() {
           <div className="text-sm text-ink-2">@{u.username}</div>
         </div>
         {u.status_text && <p className="text-sm text-ink-1">{u.status_text}</p>}
+        {(() => {
+          const ls = listeningFor(sessions, userId)
+          if (!ls || !ls.session) return null
+          const ch = channels[ls.channel_id]
+          const where = ch ? (ch.kind === 'dm' ? dmTitle(ch, me.id, users) : `#${ch.name}`) : 'a chat'
+          const now = ls.items.find((i) => i.id === ls.session!.current_item_id)
+          const canJoin = !!ch && !ls.members.includes(me.id)
+          return (
+            <div className="mt-1 w-full rounded-xl bg-accent/10 px-3 py-2 text-left text-sm">
+              <div className="flex items-center gap-1.5 font-medium text-accent">
+                <Headphones size={14} /> Listening in {where}
+              </div>
+              {now && <div className="truncate text-xs text-ink-1">{now.title}</div>}
+              {canJoin && (
+                <Button
+                  className="mt-2 w-full py-1.5 text-xs"
+                  onClick={async () => {
+                    await joinListen(ls.channel_id).catch(() => {})
+                    close()
+                    navigate(ch.kind === 'dm' ? `/app/dm/${ch.id}` : `/app/g/${ch.group_id}/${ch.id}`)
+                  }}
+                >
+                  <Headphones size={14} /> Listen along
+                </Button>
+              )}
+            </div>
+          )
+        })()}
 
         <div className="mt-3 flex w-full flex-col gap-2">
           {isSelf && <p className="text-sm text-ink-2">This is you.</p>}

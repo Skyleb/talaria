@@ -169,16 +169,23 @@ func (s *Server) handleServeFile(w http.ResponseWriter, r *http.Request) {
 	}
 	// Access: uploader always; otherwise member of the message's channel.
 	if att.UploaderID != me.ID {
-		if att.MessageID == "" {
+		channelID := ""
+		if att.MessageID != "" {
+			m, err := s.Store.MessageByID(r.Context(), att.MessageID)
+			if err != nil {
+				notFound(w)
+				return
+			}
+			channelID = m.ChannelID
+		} else if cid, ok := s.Store.PlaylistChannelForAttachment(r.Context(), att.ID); ok {
+			// A listening-queue upload: members of that chat may stream it.
+			channelID = cid
+		}
+		if channelID == "" {
 			notFound(w)
 			return
 		}
-		m, err := s.Store.MessageByID(r.Context(), att.MessageID)
-		if err != nil {
-			notFound(w)
-			return
-		}
-		ch, err := s.Store.ChannelByID(r.Context(), m.ChannelID)
+		ch, err := s.Store.ChannelByID(r.Context(), channelID)
 		if err != nil {
 			notFound(w)
 			return

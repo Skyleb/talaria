@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { Bell, BellOff, Hash, LogOut, Pencil, Phone, UserPlus, Users } from 'lucide-react'
+import { Bell, BellOff, Hash, Headphones, LogOut, Pencil, Phone, UserPlus, Users } from 'lucide-react'
 import { api } from '../lib/api'
 import { dmTitle, displayName, useApp } from '../store'
 import { useCall } from '../call'
@@ -8,6 +8,8 @@ import { PageHeader } from './AppShell'
 import { MessageList } from '../components/chat/MessageList'
 import { Composer } from '../components/chat/Composer'
 import { CallPanel } from '../components/call/CallPanel'
+import { ListenPanel, StartListenModal } from '../components/listen/ListenPanel'
+import { useListen } from '../listen'
 import { Avatar } from '../components/Avatar'
 import { Button, cx, ErrorText, Input, Label, Modal } from '../components/ui'
 import type { Message } from '../lib/types'
@@ -63,6 +65,7 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
           right={
             <>
               <StartCallButton channelId={channelId} />
+              <ListenButton channelId={channelId} />
               <MuteButton channelId={channelId} />
               {isDM && (
                 <button
@@ -95,6 +98,7 @@ export default function ChatPage({ onMenu }: { onMenu: () => void }) {
           }
         />
         <CallPanel channelId={channelId} />
+        <ListenPanel channelId={channelId} />
         <MessageList channelId={channelId} onReply={setReplyTo} />
         <TypingLine channelId={channelId} />
         <Composer channelId={channelId} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
@@ -240,6 +244,26 @@ function ChatSettingsModal({ open, onClose, channelId }: { open: boolean; onClos
   )
 }
 
+// ListenButton starts a listening session (hidden while one is running:
+// the panel takes over).
+function ListenButton({ channelId }: { channelId: string }) {
+  const active = useListen((s) => !!s.sessions[channelId]?.session)
+  const [open, setOpen] = useState(false)
+  if (active) return null
+  return (
+    <>
+      <button
+        className="rounded p-1.5 text-ink-1 hover:bg-bg-3 hover:text-accent"
+        title="Listen together"
+        onClick={() => setOpen(true)}
+      >
+        <Headphones size={18} />
+      </button>
+      <StartListenModal open={open} onClose={() => setOpen(false)} channelId={channelId} />
+    </>
+  )
+}
+
 // MuteButton silences notifications and unread badges for one channel.
 function MuteButton({ channelId }: { channelId: string }) {
   const muted = useApp((s) => !!s.mutedChannelIds[channelId])
@@ -315,6 +339,12 @@ function MemberPanel({ groupId, open, onClose }: { groupId: string; open: boolea
   const users = useApp((s) => s.users)
   const online = useApp((s) => s.online)
   const openProfile = useApp((s) => s.openProfile)
+  const listenSessions = useListen((s) => s.sessions)
+  const listening = useMemo(() => {
+    const set = new Set<string>()
+    for (const st of Object.values(listenSessions)) for (const id of st.members) set.add(id)
+    return set
+  }, [listenSessions])
 
   const sorted = useMemo(() => {
     return [...members].sort((a, b) => {
@@ -361,6 +391,9 @@ function MemberPanel({ groupId, open, onClose }: { groupId: string; open: boolea
                     {displayName(users, m.user_id)}
                     {m.role !== 'member' && (
                       <span className="ml-1 rounded bg-bg-3 px-1 text-[10px] uppercase text-ink-1">{m.role}</span>
+                    )}
+                    {listening.has(m.user_id) && (
+                      <Headphones size={12} className="ml-1 inline text-accent" aria-label="Listening" />
                     )}
                   </div>
                   {u?.status_text && <div className="truncate text-xs text-ink-2">{u.status_text}</div>}

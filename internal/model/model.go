@@ -103,20 +103,20 @@ const (
 )
 
 type Message struct {
-	ID        string       `json:"id"`
-	ChannelID string       `json:"channel_id"`
-	AuthorID  string       `json:"author_id"`
-	Kind      string       `json:"kind"`
-	Content   string       `json:"content"`
-	ReplyToID string       `json:"reply_to_id,omitempty"`
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	AuthorID  string `json:"author_id"`
+	Kind      string `json:"kind"`
+	Content   string `json:"content"`
+	ReplyToID string `json:"reply_to_id,omitempty"`
 	// MentionIDs lists users @mentioned in Content (channel members only).
-	MentionIDs []string    `json:"mention_ids,omitempty"`
-	CreatedAt int64        `json:"created_at"`
-	EditedAt  int64        `json:"edited_at,omitempty"`
-	DeletedAt int64        `json:"deleted_at,omitempty"`
-	Author    *PublicUser  `json:"author,omitempty"`
+	MentionIDs  []string     `json:"mention_ids,omitempty"`
+	CreatedAt   int64        `json:"created_at"`
+	EditedAt    int64        `json:"edited_at,omitempty"`
+	DeletedAt   int64        `json:"deleted_at,omitempty"`
+	Author      *PublicUser  `json:"author,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
-	ReplyTo   *Message     `json:"reply_to,omitempty"`
+	ReplyTo     *Message     `json:"reply_to,omitempty"`
 	// Nonce echoes the client-supplied idempotency key on create (not stored).
 	Nonce string `json:"nonce,omitempty"`
 }
@@ -159,6 +159,51 @@ type Invite struct {
 	ExpiresAt int64  `json:"expires_at,omitempty"` // 0 = never
 	RevokedAt int64  `json:"revoked_at,omitempty"`
 	CreatedAt int64  `json:"created_at"`
+}
+
+// --- Phase 4: synchronized listening ---
+
+type Playlist struct {
+	ID         string `json:"id"`
+	OwnerID    string `json:"owner_id"`
+	ChannelID  string `json:"channel_id,omitempty"`
+	Name       string `json:"name"`
+	ArchivedAt int64  `json:"archived_at,omitempty"`
+	CreatedAt  int64  `json:"created_at"`
+	UpdatedAt  int64  `json:"updated_at"`
+	ItemCount  int    `json:"item_count"`
+}
+
+// PlaylistItem is one queue entry. Kind is "video" (YouTube) or "upload";
+// Refs holds provider identifiers (youtube id, thumbnail, upload mime).
+type PlaylistItem struct {
+	ID           string            `json:"id"`
+	PlaylistID   string            `json:"playlist_id"`
+	Position     float64           `json:"position"`
+	Kind         string            `json:"kind"`
+	Title        string            `json:"title"`
+	Artist       string            `json:"artist,omitempty"`
+	DurationMS   int64             `json:"duration_ms,omitempty"`
+	RefsJSON     string            `json:"-"`
+	Refs         map[string]string `json:"refs"`
+	AttachmentID string            `json:"attachment_id,omitempty"`
+	AddedBy      string            `json:"added_by"`
+	CreatedAt    int64             `json:"created_at"`
+}
+
+// PlaybackSession is the server-authoritative transport state. While
+// playing, position = position_ms + (server_now - anchor_server_ms).
+type PlaybackSession struct {
+	ID             string `json:"id"`
+	ChannelID      string `json:"channel_id"`
+	HostUserID     string `json:"host_user_id"`
+	PlaylistID     string `json:"playlist_id"`
+	CurrentItemID  string `json:"current_item_id,omitempty"`
+	State          string `json:"state"` // playing | paused | ended
+	PositionMS     int64  `json:"position_ms"`
+	AnchorServerMS int64  `json:"anchor_server_ms"`
+	StartedAt      int64  `json:"started_at"`
+	EndedAt        int64  `json:"ended_at,omitempty"`
 }
 
 type PushSubscription struct {

@@ -122,6 +122,53 @@ export interface ReadyPayload {
   users: Record<string, User>
 }
 
+// --- Synchronized listening ---
+
+export interface PlaybackSession {
+  id: string
+  channel_id: string
+  host_user_id: string
+  playlist_id: string
+  current_item_id?: string
+  state: 'playing' | 'paused' | 'ended'
+  position_ms: number
+  anchor_server_ms: number
+  started_at: number
+  ended_at?: number
+}
+
+export interface PlaylistItem {
+  id: string
+  playlist_id: string
+  position: number
+  kind: 'video' | 'upload' | 'track'
+  title: string
+  artist?: string
+  duration_ms?: number
+  refs: Record<string, string>
+  attachment_id?: string
+  added_by: string
+  created_at: number
+}
+
+export interface Playlist {
+  id: string
+  owner_id: string
+  channel_id?: string
+  name: string
+  created_at: number
+  updated_at: number
+  item_count: number
+}
+
+export interface ListenState {
+  channel_id: string
+  session: PlaybackSession | null
+  items: PlaylistItem[]
+  members: string[]
+  server_now: number
+}
+
 export interface SessionInfo {
   id: string
   created_at: number

@@ -21,9 +21,10 @@ const (
 
 // Hub is the connection registry and fan-out engine.
 type Hub struct {
-	store *store.Store
-	log   *slog.Logger
-	call  CallHandler // set by main when the SFU is enabled; may be nil
+	store  *store.Store
+	log    *slog.Logger
+	call   CallHandler    // set by main when the SFU is enabled; may be nil
+	listen ListenProvider // set by main; may be nil
 
 	mu       sync.RWMutex
 	byUser   map[string]map[*Client]struct{}
@@ -43,6 +44,14 @@ type CallHandler interface {
 
 // SetCallHandler wires the SFU in; call before serving connections.
 func (h *Hub) SetCallHandler(c CallHandler) { h.call = c }
+
+// ListenProvider is implemented by the listen service (Phase 4).
+type ListenProvider interface {
+	ActiveListeningFor(ctx context.Context, userID string) []any
+	OnUserOffline(userID string)
+}
+
+func (h *Hub) SetListenProvider(p ListenProvider) { h.listen = p }
 
 type resumeSession struct {
 	userID   string
@@ -146,6 +155,9 @@ func (h *Hub) detach(c *Client) {
 			h.broadcastPresence(c.userID, "offline")
 			if h.call != nil {
 				h.call.OnUserOffline(c.userID)
+			}
+			if h.listen != nil {
+				go h.listen.OnUserOffline(c.userID)
 			}
 			return
 		}

@@ -14,6 +14,7 @@ import (
 	"github.com/skyle/talaria/internal/gateway"
 	"github.com/skyle/talaria/internal/lanaccess"
 	"github.com/skyle/talaria/internal/landns"
+	"github.com/skyle/talaria/internal/listen"
 	"github.com/skyle/talaria/internal/push"
 	"github.com/skyle/talaria/internal/store"
 )
@@ -35,6 +36,8 @@ type Server struct {
 	LanAccess *lanaccess.Runner
 	// Push sends Web Push notifications; nil disables them.
 	Push *push.Sender
+	// Listen runs synchronized listening sessions.
+	Listen *listen.Service
 
 	// cfgMu serializes admin edits to Config.
 	cfgMu sync.Mutex

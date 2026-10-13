@@ -82,6 +82,17 @@ localhost.
 > reach you; ask your ISP for a public IP or use a tunnel (Tailscale Funnel,
 > Cloudflare Tunnel).
 
+## Listen together
+
+Any chat, DM, or group channel can host a shared listening session: tap the
+headphones icon in the header, paste YouTube links or upload songs and
+videos, and everyone who joins hears the same moment. The server keeps the
+clock, so late joiners land in sync; the host drives play/pause/seek/skip
+and anyone can add to the queue. Save a queue as a named playlist to start
+it again later. A member's profile card shows what they are listening to,
+with a one-tap "Listen along". (Spotify and Apple Music providers are the
+next step; they need developer-app registration on your side.)
+
 ## Development
 
 Prereqs: Go 1.24+, Node 20+.
@@ -120,6 +131,9 @@ documented in `docs/protocol.md`.
   over plain HTTP join listen-only, so enable self-signed TLS or DDNS for
   full calls. Planned refinements: direct P2P transport for 1:1 calls,
   simulcast, embedded TURN.
+- **Phase 4, slice 1 (done)** — Listen together: synchronized YouTube +
+  upload playback per channel with a server-authoritative clock, shared
+  queue, host controls, saved playlists, and listening presence.
 - **Phase 3** — presence: Currently Playing (optional tiny desktop helper) and
   Currently Listening.
 - **Phase 4** — synchronized listening/watching: group playlists mixing

@@ -199,6 +199,8 @@ type ReadyPayload struct {
 	// ActiveCalls carries call.state payloads for in-progress calls the user
 	// can see, so a fresh client renders them immediately.
 	ActiveCalls []any `json:"active_calls,omitempty"`
+	// ActiveListening carries sync.state payloads for live listening sessions.
+	ActiveListening []any `json:"active_listening,omitempty"`
 }
 
 type GroupSummary struct {
@@ -306,6 +308,9 @@ func (h *Hub) buildReady(ctx context.Context, userID string) (*ReadyPayload, err
 	}
 	if h.call != nil {
 		ready.ActiveCalls = h.call.ActiveCallsFor(ctx, userID)
+	}
+	if h.listen != nil {
+		ready.ActiveListening = h.listen.ActiveListeningFor(ctx, userID)
 	}
 	return ready, nil
 }

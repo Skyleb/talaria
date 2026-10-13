@@ -108,7 +108,8 @@ func (s *Store) DeleteStaleOrphanAttachments(ctx context.Context, cutoff int64) 
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM attachments WHERE message_id IS NULL AND created_at < ?`, cutoff); err != nil {
+		`DELETE FROM attachments WHERE message_id IS NULL AND created_at < ?
+		 AND id NOT IN (SELECT upload_attachment_id FROM playlist_items WHERE upload_attachment_id IS NOT NULL)`, cutoff); err != nil {
 		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT id, sha256 FROM files WHERE
