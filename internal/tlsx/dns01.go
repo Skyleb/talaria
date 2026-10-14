@@ -55,7 +55,7 @@ func NewDNS01Manager(dataDir, domain string, txt ddns.TXTSetter, directoryURL st
 	m := &DNS01Manager{
 		domain:    strings.ToLower(domain),
 		txt:       txt,
-		dir:       filepath.Join(dataDir, "certs", "lan", strings.ToLower(domain)),
+		dir:       LanCertDir(dataDir, domain),
 		directory: directoryURL,
 		log:       log,
 	}
@@ -142,17 +142,38 @@ func (m *DNS01Manager) ensure(ctx context.Context) bool {
 	return true
 }
 
-func (m *DNS01Manager) loadCached() {
-	cert, err := tls.LoadX509KeyPair(filepath.Join(m.dir, "cert.pem"), filepath.Join(m.dir, "key.pem"))
+// LanCertDir is where a lan domain's certificate, key and ACME account live.
+func LanCertDir(dataDir, domain string) string {
+	return filepath.Join(dataDir, "certs", "lan", strings.ToLower(domain))
+}
+
+// LoadCachedLanCert returns the lan domain's on-disk certificate (Leaf set),
+// or an error when there is none or it has expired. Besides warm-starting the
+// manager, it is what lets a switched-off lan domain keep answering TLS: the
+// DNS record and the certificate both outlive the feature being enabled.
+func LoadCachedLanCert(dataDir, domain string) (*tls.Certificate, error) {
+	dir := LanCertDir(dataDir, domain)
+	cert, err := tls.LoadX509KeyPair(filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem"))
 	if err != nil {
-		return
+		return nil, err
 	}
 	leaf, err := x509.ParseCertificate(cert.Certificate[0])
-	if err != nil || time.Now().After(leaf.NotAfter) {
-		return
+	if err != nil {
+		return nil, err
+	}
+	if time.Now().After(leaf.NotAfter) {
+		return nil, fmt.Errorf("cached certificate for %s expired %s", domain, leaf.NotAfter.Format(time.RFC3339))
 	}
 	cert.Leaf = leaf
-	m.cert.Store(&cert)
+	return &cert, nil
+}
+
+func (m *DNS01Manager) loadCached() {
+	// m.dir is <dataDir>/certs/lan/<domain>; walk back up to dataDir.
+	dataDir := filepath.Dir(filepath.Dir(filepath.Dir(m.dir)))
+	if cert, err := LoadCachedLanCert(dataDir, m.domain); err == nil {
+		m.cert.Store(cert)
+	}
 }
 
 func (m *DNS01Manager) obtain(ctx context.Context) error {

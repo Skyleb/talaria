@@ -286,4 +286,8 @@ export interface LanAccessStatus {
   cert_ok?: boolean
   cert_expires?: string
   error?: string
+  /** A switched-off home domain still being redirected to the main domain. */
+  retired_domain?: string
+  /** Whether that domain still has a usable cached certificate to answer HTTPS with. */
+  retired_served?: boolean
 }

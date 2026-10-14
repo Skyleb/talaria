@@ -275,6 +275,11 @@ func run(stop <-chan struct{}) {
 				log.Error("lan access not started", "err", err)
 			}
 		}
+	} else if useACME && cfg.LanAccess.Domain != "" {
+		// Switched off but still named: its DNS record likely still points
+		// here and devices may still hold its URL. Serve the cached cert and
+		// redirect them to the main domain instead of refusing the handshake.
+		lanAccess.Retire(cfg.LanAccess.Domain, dataDir)
 	}
 
 	// Hosted dynamic DNS: issue names under our zone to other Talaria
@@ -301,11 +306,11 @@ func run(stop <-chan struct{}) {
 				errCh <- fmt.Errorf(":80 listener (needed for Let's Encrypt): %w", err)
 			}
 		}()
-		// SNI dispatch: the lan domain's DNS-01 cert when asked for it,
-		// else autocert's HTTP-01 cert for the main domain.
+		// SNI dispatch: the lan domain's DNS-01 cert when asked for it (live
+		// or retired), else autocert's HTTP-01 cert for the main domain.
 		getCert := func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if lanAccess.Matches(hello.ServerName) {
-				return lanAccess.Certificate()
+			if cert, handled, err := lanAccess.Certificate(hello.ServerName); handled {
+				return cert, err
 			}
 			return m.GetCertificate(hello)
 		}

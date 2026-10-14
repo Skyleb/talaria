@@ -20,9 +20,25 @@ import (
 // broken loopback (bulk transfers stall) are exactly who this is for.
 func (s *Server) lanRedirect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		lanDomain := ""
+		lanDomain, retired := "", ""
 		if s.LanAccess != nil {
 			lanDomain = s.LanAccess.Domain()
+			retired = s.LanAccess.Retired()
+		}
+		pub := s.Config.TLS.Domain
+		// A request for a switched-off lan domain: send the device back to
+		// the main domain. Every method goes (an app left open there keeps
+		// calling the API); 307 keeps non-GET methods intact, and nothing is
+		// cacheable in case the domain is re-enabled later.
+		if retired != "" && pub != "" && !strings.EqualFold(retired, pub) && strings.EqualFold(stripPort(r.Host), retired) {
+			s.Log.Info("lan redirect: retired domain, sending to main domain", "host", retired, "path", r.URL.Path)
+			w.Header().Set("Cache-Control", "no-store")
+			code := http.StatusTemporaryRedirect
+			if r.Method == http.MethodGet || r.Method == http.MethodHead {
+				code = http.StatusFound
+			}
+			http.Redirect(w, r, "https://"+pub+r.URL.RequestURI(), code)
+			return
 		}
 		// Only page loads (GET for HTML, no websocket upgrades) on the main
 		// domain are candidates.
@@ -31,7 +47,6 @@ func (s *Server) lanRedirect(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		pub := s.Config.TLS.Domain
 		if pub == "" || !strings.EqualFold(stripPort(r.Host), pub) {
 			next.ServeHTTP(w, r)
 			return

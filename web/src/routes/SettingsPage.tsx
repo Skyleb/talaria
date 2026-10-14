@@ -1058,6 +1058,15 @@ function ServerConfigSection() {
               ) : null}
             </>
           )}
+          {!cfg.lan_access.enabled && lanStatus?.retired_domain && (
+            <p className="rounded-lg bg-bg-2 px-3 py-2 text-sm text-ink-2">
+              Off. Devices that still open <strong>{lanStatus.retired_domain}</strong> are sent to{' '}
+              {cfg.tls.domain || 'the main domain'}
+              {lanStatus.retired_served
+                ? ' using its saved certificate, so they keep working until it expires.'
+                : ', but it has no saved certificate, so HTTPS on it fails until you switch this back on.'}
+            </p>
+          )}
         </div>
 
         <div className="space-y-3">
